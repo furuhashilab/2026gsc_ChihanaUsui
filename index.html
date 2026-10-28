@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SoundNav</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
+
+<style>
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   Layout: single-column screen stack, phone-first, tap-friendly controls
+   Palette: sonar/radar dark — deep navy bg, cyan signal, soft warning amber
+   Type: Space Grotesk for UI text, JetBrains Mono for distance numerals
+   ──────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0b0d14;
+  --surface:   #131620;
+  --surface2:  #1c1f2e;
+  --border:    #252840;
+  --fg:        #dde3f0;
+  --fg-dim:    #6b7490;
+  --accent:    #3dd6e0;
+  --accent-lo: #1b5e63;
+  --accent2:   #7c8cf8;
+  --success:   #52e8a0;
+  --warning:   #f5c542;
+  --danger:    #f06060;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #f0f4f8;
+    --surface:   #ffffff;
+    --surface2:  #e8edf5;
+    --border:    #d0d8e8;
+    --fg:        #1a1e2e;
+    --fg-dim:    #7888a8;
+    --accent:    #0ca5b0;
+    --accent-lo: #c5eef0;
+    --accent2:   #4a5af0;
+    --success:   #1a9e6a;
+    --warning:   #b08000;
+    --danger:    #cc3838;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:        #f0f4f8;
+  --surface:   #ffffff;
+  --surface2:  #e8edf5;
+  --border:    #d0d8e8;
+  --fg:        #1a1e2e;
+  --fg-dim:    #7888a8;
+  --accent:    #0ca5b0;
+  --accent-lo: #c5eef0;
+  --accent2:   #4a5af0;
+  --success:   #1a9e6a;
+  --warning:   #b08000;
+  --danger:    #cc3838;
+  color-scheme: light;
+}
+
+[hidden] { display: none !important; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+
+/* Safe-area gutters */
+body {
+  padding-left:  max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+
+/* ── Screens ─────────────────────────────────────────────────────────────── */
+.screen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+  padding-block: max(24px, env(safe-area-inset-top, 24px)) max(24px, env(safe-area-inset-bottom, 24px));
+  gap: 20px;
+  text-align: center;
+}
+.screen.active { display: flex; }
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+.app-name {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.phase-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.subtitle {
+  font-size: 0.95rem;
+  color: var(--fg-dim);
+  line-height: 1.65;
+  max-width: 320px;
+}
+.distance-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.distance-unit {
+  font-size: 1.25rem;
+  color: var(--fg-dim);
+  font-weight: 400;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 36px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s, transform .12s;
+  min-width: 180px;
+  touch-action: manipulation;
+}
+.btn:active { transform: scale(.96); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 2px solid var(--danger);
+}
+.btn-sm {
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  min-width: 120px;
+}
+.btn-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 20px;
+  width: 100%;
+  text-align: left;
+}
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.9rem;
+}
+.card-row + .card-row { border-top: 1px solid var(--border); }
+.card-label { color: var(--fg-dim); }
+.card-value { font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+
+/* ── Radar / pulse ───────────────────────────────────────────────────────── */
+.radar-wrap {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+}
+.radar-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: ringOut 2.4s ease-out infinite;
+}
+.radar-ring:nth-child(2) { animation-delay: .8s; }
+.radar-ring:nth-child(3) { animation-delay: 1.6s; }
+@keyframes ringOut {
+  0%   { transform: scale(.25); opacity: .7; }
+  100% { transform: scale(1);   opacity: 0; }
+}
+.radar-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform .25s ease, opacity .25s;
+}
+/* Walking version — pulse scales with volume */
+.radar-dot.pulse { animation: dotPulse .5s ease infinite alternate; }
+@keyframes dotPulse {
+  from { transform: translate(-50%,-50%) scale(1); }
+  to   { transform: translate(-50%,-50%) scale(1.35); }
+}
+
+/* ── Volume bar ──────────────────────────────────────────────────────────── */
+.vol-bar-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vol-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+.vol-track {
+  width: 100%;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.vol-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  transition: width .25s;
+}
+
+/* ── Calibration timer ring ──────────────────────────────────────────────── */
+.timer-svg { transform: rotate(-90deg); }
+.timer-track { fill: none; stroke: var(--surface2); stroke-width: 5; }
+.timer-fill  { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round;
+               stroke-dasharray: 477; stroke-dashoffset: 477; transition: stroke-dashoffset .9s linear; }
+.timer-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  text-align: center;
+}
+.timer-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* ── Arrived animation ───────────────────────────────────────────────────── */
+@keyframes celebrate {
+  0%,100% { transform: scale(1); }
+  50%      { transform: scale(1.2); }
+}
+.arrived-icon { animation: celebrate .6s ease 3; font-size: 3.5rem; }
+.arrived-title { font-size: 2rem; font-weight: 700; color: var(--success); }
+
+/* ── Hint card ───────────────────────────────────────────────────────────── */
+.hint-card {
+  background: var(--surface);
+  border: 1px solid var(--warning);
+  border-radius: 12px;
+  padding: 12px 16px;
+  width: 100%;
+  font-size: 0.9rem;
+  color: var(--warning);
+  text-align: center;
+}
+
+/* ── Safety badge ────────────────────────────────────────────────────────── */
+.safety {
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+  line-height: 1.6;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.safety-icon { flex-shrink: 0; }
+
+/* ── Debug panel ─────────────────────────────────────────────────────────── */
+#debug {
+  position: fixed;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0; right: 0;
+  background: rgba(0,0,0,.85);
+  border-top: 1px solid #333;
+  padding: 8px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: #888;
+  white-space: pre;
+  line-height: 1.5;
+  z-index: 100;
+}
+
+/* ── GPS accuracy dot ────────────────────────────────────────────────────── */
+.gps-quality {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}
+.gps-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  transition: background .4s;
+}
+.gps-dot.ok  { background: var(--success); }
+.gps-dot.mid { background: var(--warning); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SCREEN: IDLE ══════════════ -->
+<div id="s-idle" class="screen active">
+  <div style="font-size:2.5rem">🎯</div>
+  <h1 class="app-name">SoundNav</h1>
+  <p class="subtitle">
+    画面を見ずに、<strong style="color:var(--fg)">音だけ</strong>で隠れた目的地を探すゲームです。<br>
+    出発前に一度だけ方向を確認し、あとは音量の変化を頼りに歩きます。
+  </p>
+  <div class="safety">
+    <span class="safety-icon">⚠️</span>
+    <span>歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳のみ</strong>を推奨します。屋外の広い場所でお試しください。</span>
+  </div>
+  <button class="btn btn-primary" onclick="onStart()">ゲームを始める</button>
+  <button class="btn btn-ghost btn-sm" onclick="toggleDebug()" style="opacity:.5">開発者モード</button>
+</div>
+
+<!-- ══════════════ SCREEN: GPS ══════════════ -->
+<div id="s-gps" class="screen">
+  <span class="phase-label">現在地を取得中</span>
+  <div class="radar-wrap">
+    <div class="radar-ring"></div>
+    <div class="radar-ring"></div>
+    <div class="radar-ring"></div>
+    <div class="radar-dot"></div>
+  </div>
+  <div class="gps-quality">
+    <div class="gps-dot" id="gps-dot"></div>
+    <span id="gps-status">GPSを確認しています…</span>
+  </div>
+  <p class="subtitle" style="font-size:.85rem">屋外に出るとすぐに取得できます。<br>精度が ±30m 以下になったら自動で次へ進みます。</p>
+  <button class="btn btn-ghost btn-sm" onclick="onForceGPS()">精度が粗くても進む</button>
+</div>
+
+<!-- ══════════════ SCREEN: CALIBRATE ══════════════ -->
+<div id="s-calib" class="screen">
+  <span class="phase-label">方向キャリブレーション</span>
+  <div class="card">
+    <div class="card-row">
+      <span class="card-label">目的地まで</span>
+      <span class="card-value" id="c-dist">---m</span>
+    </div>
+  </div>
+  <p class="subtitle">スマートフォンを持って<br><strong style="color:var(--fg)">ゆっくり360度回転</strong>してください。<br><br>音が<strong style="color:var(--accent)">最も大きくなる向き</strong>が<br>目的地の方向です。</p>
+
+  <!-- Timer ring -->
+  <div class="radar-wrap" style="width:160px;height:160px">
+    <svg width="160" height="160" class="timer-svg" style="position:absolute;inset:0">
+      <circle cx="80" cy="80" r="76" class="timer-track"/>
+      <circle cx="80" cy="80" r="76" class="timer-fill" id="timer-fill"/>
+    </svg>
+    <div class="timer-center">
+      <div class="timer-num" id="timer-num">15</div>
+      <div style="font-size:.7rem;color:var(--fg-dim)">秒</div>
+    </div>
+  </div>
+
+  <div class="vol-bar-wrap">
+    <div class="vol-label-row">
+      <span>音量</span>
+      <span id="c-vol-text">--</span>
+    </div>
+    <div class="vol-track"><div class="vol-fill" id="c-vol-fill" style="width:0%"></div></div>
+  </div>
+  <div class="card-row" style="font-size:.8rem;width:100%">
+    <span class="card-label">コンパス方位</span>
+    <span class="card-value" id="c-heading">---°</span>
+  </div>
+
+  <button class="btn btn-primary" id="c-go" hidden onclick="onStartWalking()">
+    この方向に出発！&nbsp;→
+  </button>
+  <p id="c-no-compass" class="subtitle" style="font-size:.78rem;display:none;color:var(--warning)">
+    ※ コンパスを検出できません。タイマー終了後、音が最大だった方向に向いて「出発」を押してください。
+  </p>
+</div>
+
+<!-- ══════════════ SCREEN: WALK ══════════════ -->
+<div id="s-walk" class="screen">
+  <span class="phase-label">目的地を探しています</span>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+    <span style="font-size:.85rem;color:var(--fg-dim)">目的地まで</span>
+    <div>
+      <span class="distance-num" id="w-dist">---</span><span class="distance-unit">m</span>
+    </div>
+  </div>
+
+  <!-- Radar dot that pulses with sound -->
+  <div class="radar-wrap" id="w-radar">
+    <div class="radar-ring" id="w-ring1" style="animation:none;opacity:0"></div>
+    <div class="radar-ring" id="w-ring2" style="animation:none;opacity:0"></div>
+    <div class="radar-dot pulse" id="w-dot"></div>
+  </div>
+
+  <div class="vol-bar-wrap">
+    <div class="vol-label-row">
+      <span>音量（距離の近さ）</span>
+      <span id="w-vol-text">--</span>
+    </div>
+    <div class="vol-track"><div class="vol-fill" id="w-vol-fill" style="width:50%"></div></div>
+  </div>
+
+  <p class="subtitle" id="w-hint-text" style="font-size:.9rem">音が大きくなる方向に歩き続けてください</p>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost btn-sm" onclick="onHint()">ヒント</button>
+    <button class="btn btn-danger btn-sm" onclick="onGiveUp()">ギブアップ</button>
+  </div>
+
+  <div id="w-hint-card" class="hint-card" hidden></div>
+</div>
+
+<!-- ══════════════ SCREEN: ARRIVED ══════════════ -->
+<div id="s-arrived" class="screen">
+  <div class="arrived-icon" id="arrived-icon">🎉</div>
+  <div class="arrived-title">到着！</div>
+  <p class="subtitle">目的地に到着しました！</p>
+  <div class="card">
+    <div class="card-row">
+      <span class="card-label">所要時間</span>
+      <span class="card-value" id="r-time">--:--</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">目的地の距離</span>
+      <span class="card-value" id="r-target">---m</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">実際に歩いた距離</span>
+      <span class="card-value" id="r-walked">---m</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">直線効率</span>
+      <span class="card-value" id="r-eff">---%</span>
+    </div>
+    <div class="card-row">
+      <span class="card-label">ヒント使用</span>
+      <span class="card-value" id="r-hints">0回</span>
+    </div>
+  </div>
+  <button class="btn btn-primary" onclick="onRestart()">もう一度挑戦</button>
+</div>
+
+<!-- Debug -->
+<div id="debug" hidden></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   SoundNav MVP — Audio-only location discovery game
+   Phase flow: idle → gps → calib → walk → arrived
+   ═══════════════════════════════════════════════════════════ */
+
+const CFG = {
+  MIN_DIST: 100,   // minimum destination distance (m)
+  MAX_DIST: 300,   // maximum destination distance (m)
+  ARRIVE:    15,   // arrival threshold (m)
+  ALPHA:    0.25,  // GPS smoothing factor (exponential moving average)
+  CALIB_T:  15,   // calibration countdown (seconds)
+  GOOD_ACC:  30,  // GPS accuracy threshold (m)
+};
+
+const state = {
+  phase: 'idle',
+  pos: null,           // current GPS position {lat, lon}
+  dest: null,          // destination {lat, lon}
+  bearing: null,       // bearing to destination (degrees)
+  targetDist: null,    // initial distance to destination (m)
+  smoothDist: null,    // EMA-smoothed distance
+  heading: null,       // compass heading (degrees, N=0)
+  startTime: null,
+  walkedDist: 0,
+  prevPos: null,
+  hintCount: 0,
+  // audio
+  ctx: null,
+  calibOsc: null,
+  calibGain: null,
+  blipTimer: null,
+  // calibration
+  calibInterval: null,
+  calibSec: 15,
+  compassAvailable: false,
+  orientHandler: null,
+  gpsWatcher: null,
+  debugOn: false,
+};
+
+/* ── Math helpers ─────────────────────────────────────────── */
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toR, dLon = (lon2 - lon1) * toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calcBearing(lat1, lon1, lat2, lon2) {
+  const toR = Math.PI / 180;
+  const dLon = (lon2 - lon1) * toR;
+  const y = Math.sin(dLon) * Math.cos(lat2 * toR);
+  const x = Math.cos(lat1*toR)*Math.sin(lat2*toR) - Math.sin(lat1*toR)*Math.cos(lat2*toR)*Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function genDest(lat, lon) {
+  const R = 6371000, toR = Math.PI / 180;
+  const d   = CFG.MIN_DIST + Math.random() * (CFG.MAX_DIST - CFG.MIN_DIST);
+  const brg = Math.random() * 2 * Math.PI;
+  const δ   = d / R;
+  const φ1 = lat * toR, λ1 = lon * toR;
+  const φ2 = Math.asin(Math.sin(φ1)*Math.cos(δ) + Math.cos(φ1)*Math.sin(δ)*Math.cos(brg));
+  const λ2 = λ1 + Math.atan2(Math.sin(brg)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ) - Math.sin(φ1)*Math.sin(φ2));
+  return { lat: φ2 / toR, lon: ((λ2 / toR) + 540) % 360 - 180 };
+}
+
+function angleDiff(a, b) {
+  return Math.abs(((a - b + 180 + 360) % 360) - 180);
+}
+
+/* ── Volume mapping ───────────────────────────────────────── */
+
+// Logarithmic: 1.0 at 0m, ~0.04 at MAX_DIST
+function distToVol(dist) {
+  if (dist <= 0) return 1;
+  const t = Math.log(dist + 1) / Math.log(CFG.MAX_DIST + 1);
+  return Math.max(0.04, 1 - 0.96 * Math.min(t, 1));
+}
+
+// Blip interval in ms: slow far away, rapid when close
+// 3000ms at MAX_DIST → 150ms at 0m
+function distToBlipMs(dist) {
+  const t = Math.max(0, Math.min(1, dist / CFG.MAX_DIST));
+  return 150 + 2850 * Math.pow(t, 1.4);
+}
+
+// Calibration: volume based on compass alignment (0–1)
+function headingToVol(heading, bearing) {
+  const diff = angleDiff(heading, bearing) / 180; // 0..1
+  return (Math.cos(diff * Math.PI) + 1) / 2;
+}
+
+/* ── Audio ────────────────────────────────────────────────── */
+
+function initAudio() {
+  if (!state.ctx) {
+    state.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (state.ctx.state === 'suspended') state.ctx.resume();
+}
+
+function startCalibTone() {
+  stopAllAudio();
+  const ctx = state.ctx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = 440;
+  osc.type = 'sine';
+  gain.gain.value = 0;
+  osc.start();
+  state.calibOsc = osc;
+  state.calibGain = gain;
+}
+
+function setCalibVol(vol) {
+  if (!state.calibGain) return;
+  state.calibGain.gain.setTargetAtTime(vol * 0.8, state.ctx.currentTime, 0.08);
+}
+
+function stopCalibTone() {
+  if (state.calibOsc) {
+    try { state.calibOsc.stop(); state.calibOsc.disconnect(); } catch(_) {}
+    state.calibOsc = null; state.calibGain = null;
+  }
+}
+
+function playBlip(vol, dist) {
+  const ctx = state.ctx;
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  // Pitch rises as distance decreases: 440 Hz → 880 Hz
+  const t = Math.max(0, Math.min(1, 1 - (dist / CFG.MAX_DIST)));
+  const freq = 440 + 440 * Math.pow(t, 2);
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.frequency.value = freq;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(vol, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+  osc.start(now); osc.stop(now + 0.1);
+}
+
+function playArrival() {
+  const ctx = state.ctx; if (!ctx) return;
+  const now = ctx.currentTime;
+  [523, 659, 784, 1047].forEach((f, i) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.frequency.value = f; osc.type = 'sine';
+    const t = now + i * 0.18;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.5, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    osc.start(t); osc.stop(t + 0.72);
+  });
+}
+
+function stopAllAudio() {
+  stopCalibTone();
+  if (state.blipTimer) { clearTimeout(state.blipTimer); state.blipTimer = null; }
+}
+
+function scheduleBlip() {
+  if (state.phase !== 'walk') return;
+  const dist = state.smoothDist ?? state.dist ?? CFG.MAX_DIST;
+  const vol  = distToVol(dist);
+  const ms   = distToBlipMs(dist);
+  playBlip(vol, dist);
+  updateWalkVisuals(dist, vol);
+  state.blipTimer = setTimeout(scheduleBlip, ms);
+}
+
+/* ── GPS ──────────────────────────────────────────────────── */
+
+function startGPS() {
+  state.gpsWatcher = navigator.geolocation.watchPosition(
+    onGPS, onGPSErr,
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+  );
+}
+
+function stopGPS() {
+  if (state.gpsWatcher != null) {
+    navigator.geolocation.clearWatch(state.gpsWatcher);
+    state.gpsWatcher = null;
+  }
+}
+
+function onGPS(pos) {
+  const p = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  const acc = pos.coords.accuracy;
+
+  // Update GPS indicator
+  const dot = document.getElementById('gps-dot');
+  if (dot) {
+    dot.className = 'gps-dot ' + (acc <= 20 ? 'ok' : acc <= 50 ? 'mid' : '');
+    const st = document.getElementById('gps-status');
+    if (st) st.textContent = `精度 ±${Math.round(acc)}m`;
+  }
+
+  if (state.phase === 'gps') {
+    state.pos = p;
+    if (acc <= CFG.GOOD_ACC) onFirstFix(p);
+    return;
+  }
+
+  // Walking / calibrating phases: track movement
+  if (state.prevPos) {
+    const moved = haversine(state.prevPos.lat, state.prevPos.lon, p.lat, p.lon);
+    // Filter GPS jitter (< 0.5m) and impossible jumps (> 50m)
+    if (moved > 0.5 && moved < 50) state.walkedDist += moved;
+  }
+  state.prevPos = p;
+  state.pos = p;
+
+  if (state.dest) {
+    const raw = haversine(p.lat, p.lon, state.dest.lat, state.dest.lon);
+    state.smoothDist = state.smoothDist == null
+      ? raw
+      : state.smoothDist * (1 - CFG.ALPHA) + raw * CFG.ALPHA;
+
+    if (state.phase === 'walk' && state.smoothDist < CFG.ARRIVE) {
+      triggerArrival();
+    }
+  }
+
+  updateDebug(p, acc);
+}
+
+function onGPSErr(e) {
+  const msg = { 1:'GPSへのアクセスが拒否されました。ブラウザの設定で許可してください。',
+                2:'GPS信号を取得できません。屋外に移動してください。',
+                3:'GPS取得がタイムアウトしました。再試行してください。' };
+  alert(msg[e.code] || 'GPSエラーが発生しました。');
+}
+
+function onFirstFix(p) {
+  state.dest = genDest(p.lat, p.lon);
+  state.bearing = calcBearing(p.lat, p.lon, state.dest.lat, state.dest.lon);
+  state.targetDist = haversine(p.lat, p.lon, state.dest.lat, state.dest.lon);
+  state.smoothDist = state.targetDist;
+  state.prevPos = p;
+  showScreen('calib');
+  startCalib();
+}
+
+/* ── Compass ──────────────────────────────────────────────── */
+
+async function startCompass() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    if (state.orientPerm !== 'granted') { showNoCompass(); return; }
+  }
+
+  state.orientHandler = (e) => {
+    let h = null;
+    if (e.webkitCompassHeading != null) { // iOS
+      h = e.webkitCompassHeading;
+    } else if (e.absolute && e.alpha != null) { // Android
+      h = (360 - e.alpha) % 360;
+    } else if (e.alpha != null) {
+      h = (360 - e.alpha) % 360; // fallback
+    }
+    if (h == null) return;
+    state.heading = h;
+    state.compassAvailable = true;
+    if (state.phase === 'calib') {
+      const vol = headingToVol(h, state.bearing);
+      setCalibVol(vol);
+      updateCalibVol(vol);
+      document.getElementById('c-heading').textContent = `${Math.round(h)}°`;
+    }
+  };
+  window.addEventListener('deviceorientation', state.orientHandler, true);
+}
+
+function stopCompass() {
+  if (state.orientHandler) {
+    window.removeEventListener('deviceorientation', state.orientHandler, true);
+    state.orientHandler = null;
+  }
+}
+
+function showNoCompass() {
+  document.getElementById('c-no-compass').style.display = 'block';
+  // Still play a test tone so the user knows audio is working
+  setCalibVol(0.5);
+}
+
+/* ── Calibration ──────────────────────────────────────────── */
+
+function startCalib() {
+  state.phase = 'calib';
+  state.calibSec = CFG.CALIB_T;
+  document.getElementById('c-dist').textContent = `約 ${Math.round(state.targetDist)}m`;
+  document.getElementById('timer-num').textContent = CFG.CALIB_T;
+  document.getElementById('c-go').hidden = true;
+  document.getElementById('timer-fill').style.strokeDashoffset = 477;
+
+  initAudio();
+  startCalibTone();
+  startCompass();
+
+  state.calibInterval = setInterval(() => {
+    state.calibSec--;
+    document.getElementById('timer-num').textContent = Math.max(0, state.calibSec);
+    const elapsed = CFG.CALIB_T - state.calibSec;
+    document.getElementById('timer-fill').style.strokeDashoffset =
+      477 * (1 - elapsed / CFG.CALIB_T);
+
+    if (state.calibSec <= 0) {
+      clearInterval(state.calibInterval);
+      document.getElementById('timer-num').textContent = '✓';
+      document.getElementById('c-go').hidden = false;
+    }
+  }, 1000);
+}
+
+function updateCalibVol(vol) {
+  const pct = Math.round(vol * 100);
+  document.getElementById('c-vol-fill').style.width = pct + '%';
+  let txt = '🔇 とても小さい';
+  if      (vol > .8) txt = '🔊 大きい！';
+  else if (vol > .6) txt = '🔉 やや大きい';
+  else if (vol > .4) txt = '🔉 中くらい';
+  else if (vol > .2) txt = '🔈 やや小さい';
+  document.getElementById('c-vol-text').textContent = txt;
+}
+
+/* ── Walking ──────────────────────────────────────────────── */
+
+function startWalking() {
+  state.phase = 'walk';
+  state.startTime = Date.now();
+  state.walkedDist = 0;
+
+  clearInterval(state.calibInterval);
+  stopCalibTone();
+  stopCompass();
+
+  showScreen('walk');
+  scheduleBlip();
+}
+
+function updateWalkVisuals(dist, vol) {
+  document.getElementById('w-dist').textContent = Math.round(dist);
+  const pct = Math.round(vol * 100);
+  document.getElementById('w-vol-fill').style.width = pct + '%';
+  document.getElementById('w-vol-text').textContent = pct + '%';
+
+  // Pulse animation speed and ring effect
+  const dot = document.getElementById('w-dot');
+  const interval = distToBlipMs(dist);
+  dot.style.animationDuration = Math.max(0.15, interval / 1000) + 's';
+
+  // Hint text
+  const hints = [
+    [200, '音が大きくなる方向に歩き続けてください'],
+    [100, '近づいています。音の変化に集中してください！'],
+    [40,  'もうすぐです！'],
+    [0,   '目的地のすぐそばにいます！'],
+  ];
+  for (const [th, msg] of hints) {
+    if (dist > th) { document.getElementById('w-hint-text').textContent = msg; break; }
+  }
+}
+
+/* ── Arrival ──────────────────────────────────────────────── */
+
+function triggerArrival() {
+  if (state.phase === 'arrived') return;
+  state.phase = 'arrived';
+  stopAllAudio();
+  playArrival();
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+
+  const ms = Date.now() - state.startTime;
+  const mm = String(Math.floor(ms / 60000)).padStart(2, '0');
+  const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0');
+  document.getElementById('r-time').textContent    = `${mm}:${ss}`;
+  document.getElementById('r-target').textContent  = `${Math.round(state.targetDist)}m`;
+  document.getElementById('r-walked').textContent  = `${Math.round(state.walkedDist)}m`;
+  const eff = state.walkedDist > 0
+    ? Math.min(999, Math.round(state.targetDist / state.walkedDist * 100)) : 100;
+  document.getElementById('r-eff').textContent     = `${eff}%`;
+  document.getElementById('r-hints').textContent   = `${state.hintCount}回`;
+
+  showScreen('arrived');
+}
+
+/* ── Hints ────────────────────────────────────────────────── */
+
+function onHint() {
+  state.hintCount++;
+  const card = document.getElementById('w-hint-card');
+  card.hidden = false;
+  const dist = state.smoothDist ?? state.targetDist;
+  const dirs = ['北','北東','東','南東','南','南西','西','北西'];
+
+  if (state.hintCount === 1) {
+    let vague = dist > 200 ? 'まだかなり遠くです' : dist > 100 ? 'そこそこ遠くです' : dist > 50 ? '比較的近いです' : 'かなり近いです';
+    card.textContent = `ヒント1: ${vague}`;
+  } else if (state.hintCount === 2) {
+    const dir = dirs[Math.round(state.bearing / 45) % 8];
+    card.textContent = `ヒント2: おおまかに「${dir}」の方向にあります`;
+  } else {
+    if (state.dest) {
+      const url = `https://maps.google.com/maps?q=${state.dest.lat},${state.dest.lon}`;
+      card.innerHTML = `ヒント3（ギブアップ）: <a href="${url}" target="_blank" style="color:var(--accent)">地図で確認する →</a>`;
+    }
+  }
+}
+
+function onGiveUp() {
+  if (!confirm('ギブアップしますか？目的地をGoogleマップで表示します。')) return;
+  if (state.dest) {
+    const url = `https://maps.google.com/maps?q=${state.dest.lat},${state.dest.lon}`;
+    window.open(url, '_blank');
+  }
+}
+
+/* ── UI flow ──────────────────────────────────────────────── */
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(`s-${name}`).classList.add('active');
+}
+
+async function onStart() {
+  if (!navigator.geolocation) { alert('このブラウザはGPSに対応していません。'); return; }
+  initAudio(); // must be in user gesture
+  // iOS: compass permission must be requested inside the tap handler
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { state.orientPerm = await DeviceOrientationEvent.requestPermission(); }
+    catch (e) { state.orientPerm = 'denied'; }
+  }
+  state.phase = 'gps';
+  showScreen('gps');
+  startGPS();
+}
+
+function onForceGPS() {
+  if (state.pos) onFirstFix(state.pos);
+  else alert('GPSがまだ取得できていません。少し待ってからもう一度お試しください。');
+}
+
+function onStartWalking() {
+  startWalking();
+}
+
+function onRestart() {
+  stopAllAudio();
+  stopGPS();
+  stopCompass();
+  clearInterval(state.calibInterval);
+  if (state.blipTimer) clearTimeout(state.blipTimer);
+
+  Object.assign(state, {
+    phase:'idle', pos:null, dest:null, bearing:null, targetDist:null,
+    smoothDist:null, heading:null, startTime:null, walkedDist:0,
+    prevPos:null, hintCount:0, calibSec:CFG.CALIB_T,
+    calibOsc:null, calibGain:null, blipTimer:null, calibInterval:null,
+    compassAvailable:false, orientHandler:null, gpsWatcher:null,
+  });
+  // reset hint card
+  const hc = document.getElementById('w-hint-card');
+  if (hc) { hc.hidden = true; hc.textContent = ''; }
+
+  showScreen('idle');
+}
+
+/* ── Debug ────────────────────────────────────────────────── */
+
+function toggleDebug() {
+  state.debugOn = !state.debugOn;
+  document.getElementById('debug').hidden = !state.debugOn;
+}
+
+function updateDebug(p, acc) {
+  if (!state.debugOn) return;
+  const lines = [
+    `phase=${state.phase}  acc=±${Math.round(acc)}m`,
+    `pos=${p.lat.toFixed(6)},${p.lon.toFixed(6)}`,
+    `dest=${state.dest ? state.dest.lat.toFixed(6)+','+state.dest.lon.toFixed(6) : 'none'}`,
+    `bearing=${state.bearing != null ? Math.round(state.bearing)+'°' : '--'}  heading=${state.heading != null ? Math.round(state.heading)+'°' : '--'}`,
+    `dist(smooth)=${state.smoothDist != null ? Math.round(state.smoothDist)+'m' : '--'}`,
+    `walked=${Math.round(state.walkedDist)}m  hints=${state.hintCount}`,
+  ];
+  document.getElementById('debug').textContent = lines.join('\n');
+}
+</script>
+</body>
+</html>
