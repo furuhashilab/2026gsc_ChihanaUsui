@@ -189,7 +189,7 @@ body.debug-on .screen { padding-bottom:120px; }
   <p class="sub">スマートフォンを体の前に持ち、<br><strong>その場でゆっくり一回転</strong>してください。<br>音が<strong>一番大きくなる向き</strong>が目的地の方向です。</p>
   <div class="timer">
     <svg width="150" height="150" viewBox="0 0 150 150"><circle cx="75" cy="75" r="70" class="track"/><circle cx="75" cy="75" r="70" class="fill" id="c-fill"/></svg>
-    <div class="num"><span id="c-num">15</span><small>秒</small></div>
+    <div class="num"><span id="c-num">15</span><small id="c-unit">秒</small></div>
   </div>
   <div class="meter">
     <div class="lr"><span>音の大きさ</span><span id="c-voltxt">--</span></div>
@@ -198,6 +198,7 @@ body.debug-on .screen { padding-bottom:120px; }
   <div id="c-nocompass" class="help" hidden>
     <strong>コンパス（動作と方向）が使えていません</strong>
     <span>許可されるまで、タイマーは止まったまま待ちます。</span>
+    <p id="orient-status" aria-live="polite"></p>
     <div id="orient-help-body"></div>
     <button class="btn btn-primary btn-sm" id="btn-orient-retry">もう一度許可を求める</button>
     <button class="btn btn-ghost btn-sm" id="btn-skip-calib">方向を確かめずに出発する</button>
@@ -293,7 +294,7 @@ const S = {
   anchor: null, walked: 0, startTime: null,
   hints: { 1: 0, 2: 0, 3: 0 }, gaveUp: false,
   heading: null, hx: null, hy: null, calibBearing: null,
-  gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0,
+  gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0, orientEvents: 0,
   calibTimer: null, debug: false, wakeLock: null,
 };
 
@@ -574,8 +575,9 @@ async function requestCompassPermission() {
 }
 function onOrient(e) {
   let h = null;
+  S.orientEvents++;
   if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;          // iOS
-  else if (e.absolute && e.alpha != null) h = (360 - e.alpha) % 360;                   // Android (absolute)
+  else if ((e.absolute || e.type === 'deviceorientationabsolute') && e.alpha != null) h = (360 - e.alpha) % 360; // Android
   if (h == null) return;
   const ang = (screen.orientation && screen.orientation.angle) || 0;
   h = (h + ang) % 360;
@@ -588,9 +590,11 @@ function onOrient(e) {
   if (S.phase === 'calib' || S.phase === 'recalib') document.getElementById('c-nocompass').hidden = true;
   if (S.phase === 'calib' || S.phase === 'recalib') calibAudio();
 }
+// Listen to both events: iOS gives webkitCompassHeading on 'deviceorientation',
+// Android gives a north-based alpha on 'deviceorientationabsolute'. Adding the same handler twice is a no-op.
 function compassStart() {
+  window.addEventListener('deviceorientation', onOrient);
   if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOrient);
-  else window.addEventListener('deviceorientation', onOrient);
 }
 
 /* ---------- calibration ---------- */
@@ -612,7 +616,7 @@ function runCalib(recalib) {
   document.getElementById('c-nocompass').hidden = true;
   const fill = document.getElementById('c-fill'), num = document.getElementById('c-num');
   fill.style.transition = 'none'; fill.style.strokeDashoffset = 440; void fill.offsetWidth; fill.style.transition = '';
-  num.textContent = T;
+  num.textContent = T; num.style.fontSize = ''; document.getElementById('c-unit').hidden = false;
   pingStop(); padChord(false); setVolume(0.04, 0.1);
   show('calib');
   let left = T, waited = 0;
@@ -622,14 +626,15 @@ function runCalib(recalib) {
     const alive = S.lastHeadingAt && Date.now() - S.lastHeadingAt < 1500;
     if (!alive) {
       waited++;
-      num.innerHTML = '待機中';
+      num.textContent = '待機中'; num.style.fontSize = '1.3rem'; document.getElementById('c-unit').hidden = true;
       if (waited >= 3) document.getElementById('c-nocompass').hidden = false;
       return;
     }
+    num.style.fontSize = ''; document.getElementById('c-unit').hidden = false;
     left--;
     num.textContent = Math.max(0, left);
     fill.style.strokeDashoffset = 440 * (left / T);
-    if (left <= 0) { clearInterval(S.calibTimer); num.textContent = 'OK'; document.getElementById('btn-go').hidden = false; }
+    if (left <= 0) { clearInterval(S.calibTimer); num.textContent = 'OK'; document.getElementById('c-unit').hidden = true; document.getElementById('btn-go').hidden = false; }
   }, 1000);
 }
 
@@ -776,9 +781,25 @@ document.getElementById('btn-force').onclick = () => {
 };
 document.getElementById('btn-go').onclick = () => startWalk(S.phase === 'recalib');
 document.getElementById('btn-orient-retry').onclick = async () => {
+  const before = S.orientEvents;
   await requestCompassPermission();   // must be inside a tap on iOS
-  const body = document.getElementById('orient-help-body');
-  if (S.orientPerm !== 'granted' && !document.getElementById('orient-fail')) body.insertAdjacentHTML('afterbegin', '<p id="orient-fail" style="color:var(--danger)">許可されませんでした。下の手順を試してください。</p>');
+  compassStart();
+  const st = document.getElementById('orient-status');
+  if (S.orientPerm !== 'granted') {
+    st.innerHTML = IS_IOS
+      ? '許可されていません。一度「許可しない」を選ぶと、Safariを完全に終了するまで許可の画面は出ません。下の手順2を試してください。'
+      : '許可されていません。下の手順でモーションセンサーを許可してください。';
+    st.style.color = 'var(--danger)';
+    return;
+  }
+  st.textContent = 'センサーの反応を確かめています…'; st.style.color = '';
+  setTimeout(() => {
+    if (S.lastHeadingAt && Date.now() - S.lastHeadingAt < 1500) return;  // compass works, help hides itself
+    st.style.color = 'var(--danger)';
+    st.textContent = S.orientEvents > before
+      ? 'センサーは動いていますが、方角（北の向き）が取れていません。スマホを8の字に動かしてコンパスを調整するか、別のブラウザで試してください。'
+      : '許可はされていますが、センサーの値が届いていません。ページを再読み込みしてもう一度試してください。';
+  }, 2000);
 };
 document.getElementById('btn-skip-calib').onclick = () => startWalk(S.phase === 'recalib');
 document.getElementById('btn-again').onclick = () => location.reload();
@@ -789,7 +810,7 @@ function debugUpdate() {
   document.getElementById('debug').textContent = [
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
-    `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm}`,
+    `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm} events=${S.orientEvents}`,
     `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]}`,
   ].join('\n');
 }
