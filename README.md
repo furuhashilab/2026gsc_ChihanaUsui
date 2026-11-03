@@ -25,6 +25,16 @@ https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 
 ---
 
+## ライセンス
+
+本リポジトリの文章およびコードは、CC BY 4.0で公開する（©︎ FuruhashiLaboratory/ChihanaUsui）。
+
+ただし、`sound/`フォルダの楽曲はOtoLogicの著作物であり、OtoLogicの定めるCC BY 4.0に従う。詳細は[sound/README.md](sound/README.md)を参照。
+
+音楽：OtoLogic（https://otologic.jp）
+
+---
+
 ## Claim（主張）
 
 出発時のみのコンパスキャリブレーションと、歩行中は距離に応じた音量変化のみを用いることで、画面を見ず・両耳を塞がずに安全に、かつゲームとして楽しみながらランダムな目的地に到達できる。

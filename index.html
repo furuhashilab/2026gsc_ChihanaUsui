@@ -126,6 +126,9 @@ input[type=range] { width:100%; accent-color:var(--accent); }
 .mode-pill.near { background:var(--accent); color:var(--bg); }
 
 body.debug-on .screen { padding-bottom:120px; }
+.sel { font:inherit; font-size:.9rem; color:var(--fg); background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; max-width:60%; }
+.sel:focus-visible { outline:3px solid var(--accent2); }
+.credit { font-size:.75rem; color:var(--fg-dim); }
 #debug { position:fixed; left:0; right:0; bottom:0; background:rgba(0,0,0,.85); color:#9aa; font-family:var(--font-num); font-size:.68rem; white-space:pre-wrap; line-height:1.5; z-index:100;
   padding:8px max(16px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 </style>
@@ -139,15 +142,22 @@ body.debug-on .screen { padding-bottom:120px; }
   <div class="note">
     <strong>遊び方</strong><br>
     ・その場でゆっくり一回転し、音が一番大きくなる向きに出発します。<br>
-    ・近づくほど音が大きくなります。残り50mで合図が鳴り、音がはっきり聞こえるようになります。<br>
+    ・遠いうちは音楽が小さく、こもって聞こえます。近づくほど大きくなり、残り50mで合図が鳴って、はっきり聞こえるようになります。<br>
     ・迷ったら立ち止まって「ヒント」を使えます。
   </div>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
+  <div class="card">
+    <div class="switch-row">
+      <label class="txt" for="opt-track">BGM<small>探索中に流れる音楽</small></label>
+      <select id="opt-track" class="sel"></select>
+    </div>
+  </div>
   <button class="btn btn-primary btn-big" id="btn-start">ゲームを始める</button>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button class="btn btn-ghost btn-sm" id="btn-soundtest">音のテスト（室内用）</button>
     <button class="btn btn-ghost btn-sm" id="btn-debug" style="opacity:.6">開発者表示</button>
   </div>
+  <p class="credit">音楽：<a href="https://otologic.jp" target="_blank" rel="noopener">OtoLogic</a>（<a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener">CC BY 4.0</a>）</p>
 </div>
 
 <!-- ===== GPS ===== -->
@@ -253,7 +263,6 @@ const CFG = {
   PING_FAR: 2.5,     // ping interval far away (s)
   PING_NEAR: 0.8,    // ping interval at destination (s), interval mode only
   USE_PING: false,   // interval ping disabled for now; near-mode cues stay
-  SOUND_FILE: 'sound/ambient.mp3', // free-licensed loop; synth pad is used if missing
 };
 
 const S = {
@@ -313,8 +322,24 @@ function intervalFor(d, near) {
   return 2.2 + (CFG.PING_FAR - 2.2) * t;
 }
 
+/* ---------- tracks (OtoLogic, CC BY 4.0) ---------- */
+const TRACKS = [
+  { id: 'osampo',  title: 'Osampo Biyori（Slow）',  file: 'sound/osampo_biyori_slow.mp3' },
+  { id: 'haru',    title: 'Haru Ha Utatane（Slow）', file: 'sound/haru_ha_utatane_slow.mp3' },
+  { id: 'spec',    title: 'Specification',          file: 'sound/specification.mp3' },
+  { id: 'still',   title: 'Still In Love',          file: 'sound/still_in_love.mp3' },
+  { id: 'synth',   title: '合成音（シンプル）',      file: null },
+];
+let trackId = 'osampo';
+try { const v = localStorage.getItem('soundnav.track'); if (TRACKS.some(t => t.id === v)) trackId = v; } catch (_) {}
+const trackSel = document.getElementById('opt-track');
+trackSel.innerHTML = TRACKS.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+trackSel.value = trackId;
+trackSel.onchange = () => { trackId = trackSel.value; try { localStorage.setItem('soundnav.track', trackId); } catch (_) {} };
+const currentTrack = () => TRACKS.find(t => t.id === trackId);
+
 /* ---------- audio engine ---------- */
-const A = { ctx: null, master: null, pad: null, oscs: [], filter: null, pingTimer: null, pingOn: false, useFile: false, buffer: null, loading: null };
+const A = { ctx: null, master: null, pad: null, oscs: [], src: null, filter: null, pingTimer: null, pingOn: false, useFile: false, buffers: {} };
 const CHORD_FAR = [220.00, 261.63, 329.63];   // A minor: calm, a little mysterious
 const CHORD_NEAR = [261.63, 329.63, 392.00];  // C major: brighter = "you're close"
 
@@ -322,32 +347,42 @@ function audioInit() {
   if (!A.ctx) {
     const C = window.AudioContext || window.webkitAudioContext;
     A.ctx = new C();
-    A.master = A.ctx.createGain(); A.master.gain.value = 0; A.master.connect(A.ctx.destination);
+    A.master = A.ctx.createGain(); A.master.gain.value = 0;
+    // downmix everything to mono so a single earbud hears the whole song
+    A.master.channelCount = 1; A.master.channelCountMode = 'explicit'; A.master.channelInterpretation = 'speakers';
+    A.master.connect(A.ctx.destination);
   }
   if (A.ctx.state === 'suspended') A.ctx.resume();
 }
-// Try to load the free-licensed loop once. If it is missing or fails, fall back to the synth pad.
-function loadSoundFile() {
-  if (A.loading) return A.loading;
-  A.loading = fetch(CFG.SOUND_FILE)
-    .then(r => { if (!r.ok) throw new Error('no file'); return r.arrayBuffer(); })
-    .then(b => new Promise((res, rej) => A.ctx.decodeAudioData(b, res, rej)))
-    .then(buf => { A.buffer = buf; })
-    .catch(() => { A.buffer = null; });
-  return A.loading;
+// Load the selected track (cached per track). Returns null if it fails, so the synth pad is used instead.
+async function loadTrack(t) {
+  if (!t.file) return null;
+  if (A.buffers[t.id]) return A.buffers[t.id];
+  try {
+    const r = await fetch(t.file); if (!r.ok) throw new Error('no file');
+    const b = await r.arrayBuffer();
+    const buf = await new Promise((res, rej) => A.ctx.decodeAudioData(b, res, rej));
+    A.buffers[t.id] = buf; return buf;
+  } catch (_) { return null; }
+}
+function padStop() {
+  try { if (A.src) A.src.stop(); } catch (_) {}
+  A.oscs.forEach(o => { try { o.stop(); } catch (_) {} });
+  if (A.pad) A.pad.disconnect();
+  A.pad = null; A.src = null; A.oscs = []; A.filter = null; A.useFile = false;
 }
 async function padStart() {
   if (A.pad) return;
-  await loadSoundFile();
+  const buf = await loadTrack(currentTrack());
   if (A.pad) return;
   const c = A.ctx;
-  if (A.buffer) {
+  if (buf) {
     // music loop → low-pass filter (muffled when far, clear when near) → master
     A.useFile = true;
     A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = FILE_FILTER_FAR; A.filter.Q.value = 0.5;
     A.pad = c.createGain(); A.pad.gain.value = 0.9;
-    const src = c.createBufferSource(); src.buffer = A.buffer; src.loop = true;
-    src.connect(A.filter); A.filter.connect(A.pad); A.pad.connect(A.master); src.start();
+    A.src = c.createBufferSource(); A.src.buffer = buf; A.src.loop = true;
+    A.src.connect(A.filter); A.filter.connect(A.pad); A.pad.connect(A.master); A.src.start();
     return;
   }
   A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = 900; A.filter.Q.value = 0.4;
@@ -607,14 +642,14 @@ function testUpdate() {
   const pill = document.getElementById('t-pill');
   pill.textContent = S.near ? '近距離モード' : '通常モード'; pill.classList.toggle('near', S.near);
   document.getElementById('t-vol').textContent = `${Math.round(v * 100)}%`;
-  document.getElementById('t-src').textContent = A.useFile ? '音源ファイル' : '合成音（仮）';
+  document.getElementById('t-src').textContent = A.useFile ? currentTrack().title : '合成音';
 }
 document.getElementById('t-range').oninput = testUpdate;
 document.getElementById('btn-soundtest').onclick = async () => {
   audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
   show('test'); testUpdate(); pingStart();
 };
-document.getElementById('btn-test-back').onclick = () => { pingStop(); setVolume(0, 0.2); S.phase = 'idle'; S.near = false; show('idle'); };
+document.getElementById('btn-test-back').onclick = () => { pingStop(); setVolume(0, 0.05); padStop(); S.phase = 'idle'; S.near = false; show('idle'); };
 
 /* ---------- screen wake lock (keep GPS + audio alive) ---------- */
 async function keepAwake() {
@@ -630,7 +665,9 @@ document.getElementById('btn-start').onclick = async () => {
   if (!navigator.geolocation) { document.querySelector('#s-idle .sub').textContent = 'このブラウザは位置情報に対応していません。'; return; }
   audioInit();                             // audio must be unlocked inside a tap
   const perm = requestCompassPermission();  // iOS: must also be called inside the tap
+  const btn = document.getElementById('btn-start'); btn.textContent = '音楽を読み込み中…'; btn.disabled = true;
   await padStart(); await perm;
+  btn.textContent = 'ゲームを始める'; btn.disabled = false;
   compassStart(); keepAwake();
   S.phase = 'gps'; show('gps'); gpsStart();
 };
