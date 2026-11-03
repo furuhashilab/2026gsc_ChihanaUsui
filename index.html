@@ -129,6 +129,7 @@ body.debug-on .screen { padding-bottom:120px; }
 .sel { font:inherit; font-size:.9rem; color:var(--fg); background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; max-width:60%; }
 .sel:focus-visible { outline:3px solid var(--accent2); }
 .credit { font-size:.75rem; color:var(--fg-dim); }
+.preview-row { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; padding-top:10px; margin-top:8px; border-top:1px solid var(--border); }
 #debug { position:fixed; left:0; right:0; bottom:0; background:rgba(0,0,0,.85); color:#9aa; font-family:var(--font-num); font-size:.68rem; white-space:pre-wrap; line-height:1.5; z-index:100;
   padding:8px max(16px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 </style>
@@ -150,6 +151,10 @@ body.debug-on .screen { padding-bottom:120px; }
     <div class="switch-row">
       <label class="txt" for="opt-track">BGM<small>探索中に流れる音楽</small></label>
       <select id="opt-track" class="sel"></select>
+    </div>
+    <div class="preview-row">
+      <button class="btn btn-ghost btn-sm" id="btn-preview">冒頭20秒を試聴</button>
+      <span id="preview-msg" class="credit" aria-live="polite"></span>
     </div>
   </div>
   <button class="btn btn-primary btn-big" id="btn-start">ゲームを始める</button>
@@ -335,7 +340,7 @@ try { const v = localStorage.getItem('soundnav.track'); if (TRACKS.some(t => t.i
 const trackSel = document.getElementById('opt-track');
 trackSel.innerHTML = TRACKS.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
 trackSel.value = trackId;
-trackSel.onchange = () => { trackId = trackSel.value; try { localStorage.setItem('soundnav.track', trackId); } catch (_) {} };
+trackSel.onchange = () => { previewStop(); trackId = trackSel.value; try { localStorage.setItem('soundnav.track', trackId); } catch (_) {} };
 const currentTrack = () => TRACKS.find(t => t.id === trackId);
 
 /* ---------- audio engine ---------- */
@@ -427,6 +432,43 @@ function pingStop() { A.pingOn = false; clearTimeout(A.pingTimer); }
 function cueNearIn() { [784, 988, 1175].forEach((f, i) => bell(f, 0.45, i * 0.14, 1.2)); }
 function cueNearOut() { [659, 494].forEach((f, i) => bell(f, 0.3, i * 0.2, 0.9)); }
 function cueArrive() { [523, 659, 784, 1047].forEach((f, i) => bell(f, 0.55, i * 0.16, 1.4)); }
+
+/* ---------- BGM preview (first 20 s, plain sound, mono) ---------- */
+const PREVIEW_SEC = 20;
+const P = { src: null, gain: null, oscs: [], timer: null, playing: false };
+const prevBtn = document.getElementById('btn-preview'), prevMsg = document.getElementById('preview-msg');
+function previewStop() {
+  clearTimeout(P.timer);
+  try { if (P.src) P.src.stop(); } catch (_) {}
+  P.oscs.forEach(o => { try { o.stop(); } catch (_) {} });
+  if (P.gain) P.gain.disconnect();
+  P.src = null; P.gain = null; P.oscs = []; P.playing = false;
+  prevBtn.textContent = '冒頭20秒を試聴'; prevBtn.disabled = false; prevMsg.textContent = '';
+}
+async function previewStart() {
+  audioInit();                                   // inside the tap (iOS)
+  const t = currentTrack(), c = A.ctx;
+  prevBtn.disabled = true; prevBtn.textContent = '読み込み中…';
+  const buf = t.file ? await loadTrack(t) : null;
+  if (t.file && !buf) { previewStop(); prevMsg.textContent = '曲を読み込めませんでした。通信状況を確認してください。'; return; }
+  P.gain = c.createGain();
+  P.gain.channelCount = 1; P.gain.channelCountMode = 'explicit'; P.gain.channelInterpretation = 'speakers';
+  P.gain.connect(c.destination);
+  const L = t.file ? Math.min(PREVIEW_SEC, buf.duration) : 8, now = c.currentTime;
+  P.gain.gain.setValueAtTime(0, now);
+  P.gain.gain.linearRampToValueAtTime(0.8, now + 0.05);
+  P.gain.gain.setValueAtTime(0.8, now + L - 1.5);
+  P.gain.gain.linearRampToValueAtTime(0, now + L);       // fade out at the end
+  if (buf) {
+    P.src = c.createBufferSource(); P.src.buffer = buf; P.src.connect(P.gain); P.src.start(now, 0, L);
+  } else {
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1600; f.connect(P.gain);
+    P.oscs = CHORD_FAR.map((fr, i) => { const o = c.createOscillator(); o.type = 'triangle'; o.frequency.value = fr; o.detune.value = (i - 1) * 4; o.connect(f); o.start(now); return o; });
+  }
+  P.playing = true; prevBtn.disabled = false; prevBtn.textContent = '試聴を止める';
+  P.timer = setTimeout(previewStop, L * 1000 + 100);
+}
+prevBtn.onclick = () => { if (P.playing) previewStop(); else previewStart(); };
 
 /* ---------- walking audio update ---------- */
 function currentDist() {
@@ -646,7 +688,7 @@ function testUpdate() {
 }
 document.getElementById('t-range').oninput = testUpdate;
 document.getElementById('btn-soundtest').onclick = async () => {
-  audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
+  previewStop(); audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
   show('test'); testUpdate(); pingStart();
 };
 document.getElementById('btn-test-back').onclick = () => { pingStop(); setVolume(0, 0.05); padStop(); S.phase = 'idle'; S.near = false; show('idle'); };
@@ -663,6 +705,7 @@ document.addEventListener('visibilitychange', () => {
 function show(n) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + n)); }
 document.getElementById('btn-start').onclick = async () => {
   if (!navigator.geolocation) { document.querySelector('#s-idle .sub').textContent = 'このブラウザは位置情報に対応していません。'; return; }
+  previewStop();
   audioInit();                             // audio must be unlocked inside a tap
   const perm = requestCompassPermission();  // iOS: must also be called inside the tap
   const btn = document.getElementById('btn-start'); btn.textContent = '音楽を読み込み中…'; btn.disabled = true;
