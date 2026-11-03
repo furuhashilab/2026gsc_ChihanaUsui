@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Soundwalk</title>
+<title>おとさんぽ</title>
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
 <style>
@@ -40,6 +40,7 @@ body {
   padding-block:max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
 }
 .screen.active { display:flex; }
+.app-sub { display:block; font-size:.8rem; font-weight:500; letter-spacing:.2em; color:var(--fg-dim); margin-top:2px; }
 .app-name { font-size:2rem; font-weight:700; color:var(--accent); letter-spacing:-0.02em; }
 .label { font-size:.75rem; font-weight:700; letter-spacing:.12em; color:var(--fg-dim); }
 .sub { font-size:.95rem; color:var(--fg-dim); line-height:1.7; max-width:340px; }
@@ -166,7 +167,7 @@ body.debug-on .screen { padding-bottom:120px; }
 
 <!-- ===== IDLE ===== -->
 <div id="s-idle" class="screen active">
-  <h1 class="app-name">Soundwalk</h1>
+  <h1 class="app-name">おとさんぽ<small class="app-sub">Soundwalk</small></h1>
   <p class="sub">画面を見ずに、<strong>音だけ</strong>で隠れた目的地を探すゲームです。出発前に一度だけ方向を確かめ、あとは音の変化を頼りに歩きます。</p>
   <div class="note">
     <strong>遊び方</strong><br>
@@ -330,7 +331,7 @@ body.debug-on .screen { padding-bottom:120px; }
 <script src="lib/leaflet/leaflet.js"></script>
 <script>
 /* ============================================================
-   Soundwalk — audio-only location discovery game (mid-term demo)
+   Otosanpo (Soundwalk) — audio-only location discovery game (mid-term demo)
    phases: idle → gps → calib → walk ⇄ recalib → result
    ============================================================ */
 // Destination distance presets (straight-line metres). Walking ~80 m/min; searching by sound
@@ -929,7 +930,7 @@ document.getElementById('btn-rec-csv').onclick = () => {
   const csv = '\ufeff' + [head, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `soundwalk_records_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `otosanpo_records_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
 };
 
