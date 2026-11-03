@@ -1142,7 +1142,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- buttons ---------- */
-function show(n) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + n)); }
+// switch screens and always start the new one from the top (the first screen is long and is usually scrolled down)
+function show(n) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + n)); window.scrollTo(0, 0); }
 document.getElementById('btn-start').onclick = async () => {
   if (!navigator.geolocation) { document.querySelector('#s-idle .sub').textContent = 'このブラウザは位置情報に対応していません。'; return; }
   previewStop();
