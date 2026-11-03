@@ -33,6 +33,10 @@ https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 
 音楽：OtoLogic（https://otologic.jp）
 
+目的地の候補（公園・神社・像など）と、結果画面の地図には、OpenStreetMapのデータを使用している。地図・場所のデータ：© OpenStreetMap contributors（[ODbL](https://www.openstreetmap.org/copyright)）
+
+地図の表示には、[Leaflet](https://leafletjs.com/)（BSD 2-Clause License）を使用している。`lib/leaflet/`のファイルはLeafletの配布物であり、ライセンスは[lib/leaflet/LICENSE](lib/leaflet/LICENSE)に従う。
+
 ---
 
 ## Claim（主張）

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SoundNav</title>
+<link rel="stylesheet" href="lib/leaflet/leaflet.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
 <style>
 /* Layout: single-column screen stack, phone-first, large tap targets
@@ -130,6 +131,28 @@ body.debug-on .screen { padding-bottom:120px; }
 .sel { font:inherit; font-size:.9rem; color:var(--fg); background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; max-width:60%; }
 .sel:focus-visible { outline:3px solid var(--accent2); }
 .credit { font-size:.75rem; color:var(--fg-dim); }
+.chips { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; }
+.chip { font:inherit; font-size:.85rem; text-align:left; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--fg); cursor:pointer; line-height:1.35; }
+.chip small { display:block; color:var(--fg-dim); font-size:.74rem; }
+.chip[aria-checked="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+.chip:focus-visible { outline:3px solid var(--accent2); outline-offset:2px; }
+.card-title { font-size:.9rem; text-align:left; width:100%; }
+.card-title small { display:block; color:var(--fg-dim); font-size:.76rem; }
+.stack { display:flex; flex-direction:column; gap:10px; width:100%; }
+.custom-row { display:flex; align-items:center; gap:10px; width:100%; }
+.custom-row output { font-family:var(--font-num); font-weight:700; min-width:4.5em; text-align:right; }
+.map { width:100%; height:260px; border-radius:14px; overflow:hidden; border:1px solid var(--border); background:var(--surface2); }
+.place { font-size:1.05rem; font-weight:700; }
+.place small { display:block; font-size:.8rem; color:var(--fg-dim); font-weight:400; }
+.rec-list { display:flex; flex-direction:column; gap:8px; width:100%; }
+.rec-item { font:inherit; color:var(--fg); text-align:left; width:100%; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px 14px; cursor:pointer; display:grid; grid-template-columns:1fr auto; gap:2px 12px; }
+.rec-item:focus-visible { outline:3px solid var(--accent2); }
+.rec-item .when { font-size:.76rem; color:var(--fg-dim); }
+.rec-item .what { font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rec-item .stat { grid-row:1 / span 2; grid-column:2; align-self:center; text-align:right; font-family:var(--font-num); font-size:.85rem; font-variant-numeric:tabular-nums; }
+.tag-ok { color:var(--success); } .tag-ng { color:var(--warning); }
+.empty { color:var(--fg-dim); font-size:.9rem; padding:24px 0; }
+.leaflet-container { font-family:var(--font-ui); }
 .help { background:var(--surface); border:1px solid var(--warning); border-radius:14px; padding:14px 16px; width:100%; text-align:left; font-size:.85rem; line-height:1.65; display:flex; flex-direction:column; gap:8px; }
 .help strong { color:var(--warning); }
 .help ol { padding-left:1.3em; display:flex; flex-direction:column; gap:4px; }
@@ -162,12 +185,26 @@ body.debug-on .screen { padding-bottom:120px; }
       <span id="preview-msg" class="credit" aria-live="polite"></span>
     </div>
   </div>
+  <div class="card stack">
+    <div class="card-title">目的地までの距離<small>近くの公園・神社・像などから、この距離にある場所を選びます。音を頼りに探すので、実際に歩く距離は直線より長くなります。</small></div>
+    <div class="chips" role="radiogroup" aria-label="目的地までの距離" id="range-chips">
+      <button class="chip" role="radio" data-range="near">近所<small>約15分・直線300〜500m</small></button>
+      <button class="chip" role="radio" data-range="mid">ちょっと遠く<small>約30分・直線700〜1000m</small></button>
+      <button class="chip" role="radio" data-range="far">長く歩く<small>約1時間・直線1500〜2000m</small></button>
+      <button class="chip" role="radio" data-range="custom">カスタム<small>距離を自分で決める</small></button>
+    </div>
+    <div class="custom-row" id="custom-row" hidden>
+      <input type="range" id="opt-custom" min="100" max="3000" step="50" value="400" aria-label="カスタムの距離">
+      <output id="custom-val" for="opt-custom">400m</output>
+    </div>
+  </div>
   <button class="btn btn-primary btn-big" id="btn-start">ゲームを始める</button>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button class="btn btn-ghost btn-sm" id="btn-records">これまでの記録</button>
     <button class="btn btn-ghost btn-sm" id="btn-soundtest">音のテスト（室内用）</button>
     <button class="btn btn-ghost btn-sm" id="btn-debug" style="opacity:.6">開発者表示</button>
   </div>
-  <p class="credit">音楽：<a href="https://otologic.jp" target="_blank" rel="noopener">OtoLogic</a>（<a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener">CC BY 4.0</a>）</p>
+  <p class="credit">音楽：<a href="https://otologic.jp" target="_blank" rel="noopener">OtoLogic</a>（<a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener">CC BY 4.0</a>）<br>地図・場所のデータ：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
 </div>
 
 <!-- ===== GPS ===== -->
@@ -226,22 +263,30 @@ body.debug-on .screen { padding-bottom:120px; }
 
 <!-- ===== RESULT ===== -->
 <div id="s-result" class="screen">
-  <div id="r-head"></div>
-  <div class="card">
-    <div class="row"><span class="k">所要時間</span><span class="v" id="r-time">--:--</span></div>
-    <div class="row"><span class="k">目的地までの直線距離</span><span class="v" id="r-target">--</span></div>
-    <div class="row"><span class="k">実際に歩いた距離</span><span class="v" id="r-walked">--</span></div>
-    <div class="row"><span class="k">直線効率（直線÷実際）</span><span class="v" id="r-eff">--</span></div>
+  <div id="r-body" class="stack" style="align-items:center"></div>
+  <p id="r-saved" class="credit"></p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button class="btn btn-ghost" id="btn-result-records">これまでの記録</button>
+    <button class="btn btn-primary" id="btn-again">もう一度遊ぶ</button>
   </div>
-  <div class="card">
-    <div class="row"><span class="k">ヒント1 キャリブレーションのやり直し</span><span class="v" id="r-h1">0回</span></div>
-    <div class="row"><span class="k">ヒント2 レーダー</span><span class="v" id="r-h2">0回</span></div>
-    <div class="row"><span class="k">ヒント3 大まかな方角</span><span class="v" id="r-h3">0回</span></div>
-    <div class="row"><span class="k">ギブアップ</span><span class="v" id="r-h4">なし</span></div>
-    <div class="row"><span class="k">一時停止</span><span class="v" id="r-pause">0回</span></div>
+</div>
+
+<!-- ===== RECORDS ===== -->
+<div id="s-records" class="screen" style="justify-content:flex-start">
+  <span class="label">これまでの記録</span>
+  <p class="credit">記録はこのスマホのブラウザの中だけに保存されます。</p>
+  <div id="rec-list" class="rec-list"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button class="btn btn-ghost btn-sm" id="btn-rec-csv">CSVで保存</button>
+    <button class="btn btn-danger btn-sm" id="btn-rec-clear">すべて削除</button>
   </div>
-  <div id="r-map"></div>
-  <button class="btn btn-primary" id="btn-again">もう一度遊ぶ</button>
+  <button class="btn btn-primary" id="btn-rec-back">最初の画面に戻る</button>
+</div>
+
+<!-- ===== RECORD DETAIL ===== -->
+<div id="s-detail" class="screen" style="justify-content:flex-start">
+  <div id="d-body" class="stack" style="align-items:center"></div>
+  <button class="btn btn-primary" id="btn-detail-back">記録の一覧に戻る</button>
 </div>
 
 <!-- ===== SOUND TEST ===== -->
@@ -250,7 +295,7 @@ body.debug-on .screen { padding-bottom:120px; }
   <p class="sub" style="font-size:.85rem">歩かずに、距離ごとの音の変化を確かめられます。スライダーで目的地までの距離を変えてください。</p>
   <div class="bignum"><span id="t-num">200</span><small>m</small></div>
   <span class="mode-pill" id="t-pill">通常モード</span>
-  <input type="range" id="t-range" min="0" max="300" step="1" value="200" aria-label="目的地までの距離">
+  <input type="range" id="t-range" min="0" max="500" step="1" value="300" aria-label="目的地までの距離">
   <div class="card">
     <div class="row"><span class="k">音量</span><span class="v" id="t-vol">--</span></div>
     <div class="row"><span class="k">使用中の音</span><span class="v" id="t-src">--</span></div>
@@ -275,15 +320,23 @@ body.debug-on .screen { padding-bottom:120px; }
 
 <div id="debug" hidden></div>
 
+<script src="lib/leaflet/leaflet.js"></script>
 <script>
 /* ============================================================
    SoundNav — audio-only location discovery game (mid-term demo)
    phases: idle → gps → calib → walk ⇄ recalib → result
    ============================================================ */
+// Destination distance presets (straight-line metres). Walking ~80 m/min; searching by sound
+// roughly doubles the walked distance, so 15 min ≈ 1200 m walked ≈ 300–500 m straight.
+const RANGES = {
+  near:   { label: '近所（約15分）',       min: 300,  max: 500 },
+  mid:    { label: 'ちょっと遠く（約30分）', min: 700,  max: 1000 },
+  far:    { label: '長く歩く（約1時間）',   min: 1500, max: 2000 },
+  custom: { label: 'カスタム',            min: 0,    max: 0 },
+};
 const CFG = {
-  MIN_DIST: 100,     // destination: min distance from start (m)
-  MAX_DIST: 300,     // destination: max distance from start (m)
-  ARRIVE: 15,        // arrival radius (m)
+  ARRIVE: 15,        // arrival radius for point landmarks (m)
+  ARRIVE_AREA: 30,   // arrival radius for area landmarks such as parks, measured to the area's center (m)
   NEAR_IN: 50,       // enter near mode below this (m)
   NEAR_OUT: 60,      // leave near mode above this (m) — hysteresis vs GPS jitter
   ALPHA: 0.25,       // EMA smoothing of distance
@@ -304,6 +357,7 @@ const S = {
   heading: null, hx: null, hy: null, calibBearing: null,
   gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0, orientEvents: 0,
   pauseCount: 0, pausedMs: 0, pauseStart: null, pauseTimer: null,
+  place: null, arriveR: 15, path: [], destSource: 'random',
   calibTimer: null, debug: false, wakeLock: null,
 };
 
@@ -322,8 +376,8 @@ function bearing(a, b) {
   const x = Math.cos(a.lat * rad) * Math.sin(b.lat * rad) - Math.sin(a.lat * rad) * Math.cos(b.lat * rad) * Math.cos(dLon);
   return (Math.atan2(y, x) / rad + 360) % 360;
 }
-function randomDest(p) {
-  const d = CFG.MIN_DIST + Math.random() * (CFG.MAX_DIST - CFG.MIN_DIST);
+function randomDest(p, rg) {
+  const d = rg.min + Math.random() * (rg.max - rg.min);
   const br = Math.random() * 2 * Math.PI, dr = d / R;
   const f1 = p.lat * rad, l1 = p.lon * rad;
   const f2 = Math.asin(Math.sin(f1) * Math.cos(dr) + Math.cos(f1) * Math.sin(dr) * Math.cos(br));
@@ -336,7 +390,7 @@ const DIRS = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'
 /* ---------- distance → sound mapping ---------- */
 // Far mode (> 50 m): gentle log curve, volume 0.12–0.50
 // Near mode (≤ 50 m): sensitive linear curve, volume 0.55–1.00 (the "zoomed-in radar")
-function farRef() { return Math.max(CFG.MAX_DIST, (S.targetDist || 0) * 1.3); }
+function farRef() { return Math.max(300, (S.targetDist || currentRange().max) * 1.3); }
 function volumeFor(d, near) {
   if (near) return 0.55 + 0.45 * (1 - Math.min(d, CFG.NEAR_OUT) / CFG.NEAR_OUT);
   const ref = farRef();
@@ -352,7 +406,87 @@ function intervalFor(d, near) {
   return 2.2 + (CFG.PING_FAR - 2.2) * t;
 }
 
-/* ---------- tracks (OtoLogic, CC BY 4.0) ---------- */
+/* ---------- destination distance selection ---------- */
+let rangeId = 'near', customM = 400;
+try {
+  const r = localStorage.getItem('soundnav.range'); if (RANGES[r]) rangeId = r;
+  const c = +localStorage.getItem('soundnav.custom'); if (c >= 100 && c <= 3000) customM = c;
+} catch (_) {}
+function currentRange() {
+  if (rangeId === 'custom') return { label: `カスタム（${customM}m）`, min: Math.round(customM * 0.85), max: Math.round(customM * 1.15) };
+  return RANGES[rangeId];
+}
+function syncRangeUI() {
+  document.querySelectorAll('#range-chips .chip').forEach(c => c.setAttribute('aria-checked', c.dataset.range === rangeId ? 'true' : 'false'));
+  document.getElementById('custom-row').hidden = rangeId !== 'custom';
+  document.getElementById('opt-custom').value = customM;
+  document.getElementById('custom-val').textContent = `${customM}m`;
+}
+document.querySelectorAll('#range-chips .chip').forEach(c => c.onclick = () => {
+  rangeId = c.dataset.range; syncRangeUI();
+  try { localStorage.setItem('soundnav.range', rangeId); } catch (_) {}
+});
+document.getElementById('opt-custom').oninput = e => {
+  customM = +e.target.value; syncRangeUI();
+  try { localStorage.setItem('soundnav.custom', String(customM)); } catch (_) {}
+};
+syncRangeUI();
+
+/* ---------- landmark destinations from OpenStreetMap (Overpass API) ---------- */
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+function placeKind(t) {
+  if (t.leisure === 'park') return '公園';
+  if (t.leisure === 'playground') return '遊び場';
+  if (t.tourism === 'artwork') return t.artwork_type === 'statue' ? '像' : t.artwork_type === 'sculpture' ? '彫刻' : 'アート作品';
+  if (t.tourism === 'viewpoint') return '眺めのよい場所';
+  if (t.historic === 'memorial') return t.memorial === 'statue' ? '像' : '記念碑';
+  if (t.historic === 'monument') return 'モニュメント';
+  if (t.historic === 'wayside_shrine') return '祠（ほこら）';
+  if (t.amenity === 'fountain') return '噴水';
+  if (t.amenity === 'place_of_worship') return t.religion === 'shinto' ? '神社' : t.religion === 'buddhist' ? 'お寺' : t.religion === 'christian' ? '教会' : '礼拝所';
+  return 'ランドマーク';
+}
+async function fetchLandmarks(p, radius) {
+  const a = `(around:${Math.round(radius)},${p.lat.toFixed(6)},${p.lon.toFixed(6)})`;
+  const q = `[out:json][timeout:25];(
+    nwr${a}[leisure~"^(park|playground)$"];
+    node${a}[tourism~"^(artwork|viewpoint)$"];
+    node${a}[historic~"^(memorial|monument|wayside_shrine)$"];
+    nwr${a}[amenity~"^(fountain|place_of_worship)$"];
+  );out center;`;
+  for (const url of OVERPASS) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+    try {
+      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
+      clearTimeout(timer);
+      if (!r.ok) continue;
+      const j = await r.json();
+      return (j.elements || []).map(e => {
+        const t = e.tags || {}, c = e.type === 'node' ? { lat: e.lat, lon: e.lon } : e.center;
+        if (!c || t.access === 'private' || t.access === 'no') return null;
+        const kind = placeKind(t);
+        return { lat: c.lat, lon: c.lon, area: e.type !== 'node', kind,
+                 name: t['name:ja'] || t.name || `名前のない${kind}`, named: !!(t['name:ja'] || t.name),
+                 osm: `${e.type}/${e.id}` };
+      }).filter(Boolean);
+    } catch (_) { clearTimeout(timer); }
+  }
+  return null; // network failure
+}
+// Pick a random landmark inside the chosen distance band; widen a little if none is found.
+async function pickDestination(p, rg) {
+  const list = await fetchLandmarks(p, rg.max * 1.2);
+  if (list && list.length) {
+    const withD = list.map(x => ({ ...x, d: haversine(p, x) }));
+    let pool = withD.filter(x => x.d >= rg.min && x.d <= rg.max);
+    if (!pool.length) pool = withD.filter(x => x.d >= rg.min * 0.6 && x.d <= rg.max * 1.2);
+    if (pool.length) return { ...pool[Math.floor(Math.random() * pool.length)], source: 'osm' };
+  }
+  const r = randomDest(p, rg);
+  return { ...r, area: false, kind: '地点', name: 'ランダムな地点', named: false, osm: null,
+           source: list ? 'random-none' : 'random-offline' };
+}
 const TRACKS = [
   { id: 'osampo',  title: 'Osampo Biyori（Slow）',  file: 'sound/osampo_biyori_slow.mp3' },
   { id: 'haru',    title: 'Haru Ha Utatane（Slow）', file: 'sound/haru_ha_utatane_slow.mp3' },
@@ -498,7 +632,7 @@ prevBtn.onclick = () => { if (P.playing) previewStop(); else previewStart(); };
 /* ---------- walking audio update ---------- */
 function currentDist() {
   if (S.phase === 'test') return +document.getElementById('t-range').value;
-  return S.smoothDist ?? S.targetDist ?? CFG.MAX_DIST;
+  return S.smoothDist ?? S.targetDist ?? currentRange().max;
 }
 function updateNear(d, withCue) {
   if (!S.near && d < CFG.NEAR_IN) { S.near = true; padChord(true); if (withCue) cueNearIn(); }
@@ -522,7 +656,7 @@ function onGps(p) {
   // walked distance: add only after moving STEP_MIN from the last anchor (ignores jitter while standing)
   if (S.phase === 'walk' || S.phase === 'recalib') {
     const step = haversine(S.anchor, pos);
-    if (step >= CFG.STEP_MIN && step < 80) { S.walked += step; S.anchor = pos; }
+    if (step >= CFG.STEP_MIN && step < 80) { S.walked += step; S.anchor = pos; if (S.path.length < 1500) S.path.push([pos.lat, pos.lon]); }
     else if (step >= 80) S.anchor = pos; // GPS jump: re-anchor without counting
   }
   const raw = haversine(pos, S.dest);
@@ -531,7 +665,7 @@ function onGps(p) {
   if (S.history.length > 600) S.history.shift();
   if (S.phase === 'walk') {
     walkAudio(S.smoothDist);
-    if (S.smoothDist <= CFG.ARRIVE) finish(false);
+    if (S.smoothDist <= S.arriveR) finish(false);
   }
   debugUpdate();
 }
@@ -638,12 +772,20 @@ function runCalib(recalib) {
   }, 1000);
 }
 /* ---------- round flow ---------- */
-function beginRound() {
+async function beginRound() {
+  if (S.phase !== 'gps') return;
+  S.phase = 'finding';
+  document.getElementById('gps-status').textContent = '近くの公園や神社などから、目的地を選んでいます…';
   S.start = { ...S.pos };
-  S.dest = randomDest(S.pos);
+  const rg = currentRange();
+  const place = await pickDestination(S.pos, rg);
+  S.place = place; S.destSource = place.source;
+  S.dest = { lat: place.lat, lon: place.lon };
+  S.arriveR = place.area ? CFG.ARRIVE_AREA : CFG.ARRIVE;
+  S.range = rg;
   S.targetDist = haversine(S.pos, S.dest);
   S.smoothDist = S.targetDist; S.near = false;
-  S.anchor = { ...S.pos }; S.walked = 0; S.history = [];
+  S.anchor = { ...S.pos }; S.walked = 0; S.history = []; S.path = [[S.pos.lat, S.pos.lon]];
   runCalib(false);
 }
 function startWalk(fromRecalib) {
@@ -663,24 +805,123 @@ function finish(gaveUp) {
   if (gaveUp) setVolume(0, 0.3); else { setVolume(0.8, 0.05); cueArrive(); setTimeout(() => setVolume(0, 1.5), 1800); }
   if (navigator.geolocation && S.gpsWatch != null) navigator.geolocation.clearWatch(S.gpsWatch);
   if (S.pauseStart) { S.pausedMs += Date.now() - S.pauseStart; S.pauseStart = null; }
-  const ms = Date.now() - (S.startTime || Date.now()) - S.pausedMs;
-  const mm = String(Math.floor(ms / 60000)).padStart(2, '0'), ss = String(Math.floor(ms % 60000 / 1000)).padStart(2, '0');
-  document.getElementById('r-head').innerHTML = gaveUp
-    ? '<div class="gaveup-title">ギブアップ</div><p class="sub">目的地は地図で確認できます。</p>'
-    : '<div class="arrived-title">到着！</div><p class="sub">音だけで目的地にたどり着きました。</p>';
-  document.getElementById('r-time').textContent = `${mm}:${ss}`;
-  document.getElementById('r-target').textContent = `${Math.round(S.targetDist)}m`;
-  document.getElementById('r-walked').textContent = `${Math.round(S.walked)}m`;
-  document.getElementById('r-eff').textContent = S.walked > 0 ? `${Math.min(100, Math.round(S.targetDist / S.walked * 100))}%` : '--';
-  document.getElementById('r-h1').textContent = `${S.hints[1]}回`;
-  document.getElementById('r-h2').textContent = `${S.hints[2]}回`;
-  document.getElementById('r-h3').textContent = `${S.hints[3]}回`;
-  document.getElementById('r-h4').textContent = gaveUp ? 'あり' : 'なし';
-  document.getElementById('r-pause').textContent = S.pauseCount ? `${S.pauseCount}回（合計 ${fmtTime(S.pausedMs)}）` : '0回';
-  const url = `https://www.google.com/maps/search/?api=1&query=${S.dest.lat.toFixed(6)},${S.dest.lon.toFixed(6)}`;
-  document.getElementById('r-map').innerHTML = `<a href="${url}" target="_blank" rel="noopener">目的地を地図で見る</a>`;
+  if (S.pos) S.path.push([S.pos.lat, S.pos.lon]);
+  const r5 = v => Math.round(v * 1e5) / 1e5;
+  const rec = {
+    v: 1, id: Date.now(), date: new Date().toISOString(),
+    result: gaveUp ? 'gaveup' : 'arrived',
+    range: S.range ? S.range.label : '', track: currentTrack().title,
+    place: { name: S.place.name, kind: S.place.kind, named: S.place.named, osm: S.place.osm, source: S.destSource },
+    targetDist: Math.round(S.targetDist), walked: Math.round(S.walked),
+    timeMs: Math.max(0, Date.now() - (S.startTime || Date.now()) - S.pausedMs),
+    hints: { ...S.hints }, pauseCount: S.pauseCount, pausedMs: S.pausedMs,
+    start: { lat: r5(S.start.lat), lon: r5(S.start.lon) }, dest: { lat: r5(S.dest.lat), lon: r5(S.dest.lon) },
+    path: S.path.map(q => q && [r5(q[0]), r5(q[1])]),
+  };
+  const saved = saveRecord(rec);
+  document.getElementById('r-saved').textContent = saved ? 'この結果は「これまでの記録」に保存しました。' : 'この端末では記録を保存できませんでした（プライベートブラウズ中などの場合）。';
   show('result');
+  renderRecord(rec, document.getElementById('r-body'), true);
 }
+
+/* ---------- records (saved in this browser) ---------- */
+const REC_KEY = 'soundnav.records';
+function loadRecords() { try { return JSON.parse(localStorage.getItem(REC_KEY) || '[]'); } catch (_) { return []; } }
+function saveRecord(rec) {
+  try { const all = loadRecords(); all.unshift(rec); localStorage.setItem(REC_KEY, JSON.stringify(all.slice(0, 200))); return true; }
+  catch (_) { return false; }
+}
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function effOf(r) { return r.walked > 0 ? Math.min(100, Math.round(r.targetDist / r.walked * 100)) : null; }
+function osmLink(p) { return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=18/${p.lat}/${p.lon}`; }
+function renderRecord(r, el, fresh) {
+  const ok = r.result === 'arrived', eff = effOf(r);
+  const head = fresh
+    ? (ok ? '<div class="arrived-title">到着！</div>' : '<div class="gaveup-title">ギブアップ</div>')
+    : `<span class="label">${esc(fmtDate(r.date))}</span><div class="${ok ? 'tag-ok' : 'tag-ng'}" style="font-weight:700">${ok ? '到着' : 'ギブアップ'}</div>`;
+  const src = r.place.source === 'osm' ? '' : r.place.source === 'random-offline'
+    ? '<small>場所のデータを取得できなかったため、ランダムな地点にしました</small>'
+    : '<small>この距離に公園などが見つからなかったため、ランダムな地点にしました</small>';
+  el.innerHTML = `${head}
+    <div class="place">目的地：${esc(r.place.name)}${r.place.named ? `<small>${esc(r.place.kind)}</small>` : ''}${src}</div>
+    <div class="map" id="${el.id}-map"></div>
+    <a href="${osmLink(r.dest)}" target="_blank" rel="noopener">OpenStreetMapで目的地を開く</a>
+    <div class="card">
+      <div class="row"><span class="k">距離の設定</span><span class="v">${esc(r.range)}</span></div>
+      <div class="row"><span class="k">所要時間</span><span class="v">${fmtTime(r.timeMs)}</span></div>
+      <div class="row"><span class="k">目的地までの直線距離</span><span class="v">${r.targetDist}m</span></div>
+      <div class="row"><span class="k">実際に歩いた距離</span><span class="v">${r.walked}m</span></div>
+      <div class="row"><span class="k">直線効率（直線÷実際）</span><span class="v">${eff == null ? '--' : eff + '%'}</span></div>
+      <div class="row"><span class="k">BGM</span><span class="v">${esc(r.track)}</span></div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="k">ヒント1 キャリブレーションのやり直し</span><span class="v">${r.hints[1]}回</span></div>
+      <div class="row"><span class="k">ヒント2 レーダー</span><span class="v">${r.hints[2]}回</span></div>
+      <div class="row"><span class="k">ヒント3 大まかな方角</span><span class="v">${r.hints[3]}回</span></div>
+      <div class="row"><span class="k">ギブアップ</span><span class="v">${ok ? 'なし' : 'あり'}</span></div>
+      <div class="row"><span class="k">一時停止</span><span class="v">${r.pauseCount ? `${r.pauseCount}回（合計 ${fmtTime(r.pausedMs)}）` : '0回'}</span></div>
+    </div>`;
+  drawMap(document.getElementById(`${el.id}-map`), r);
+}
+let mapInst = {};
+function drawMap(box, r) {
+  if (!box) return;
+  if (!window.L) { box.outerHTML = '<p class="credit">地図を読み込めませんでした。上のリンクから地図を開けます。</p>'; return; }
+  if (mapInst[box.id]) { mapInst[box.id].remove(); }
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  const m = L.map(box, { zoomControl: true, attributionControl: true });
+  mapInst[box.id] = m;
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(m);
+  // walked path (null entries split the line at pauses)
+  const segs = [[]]; (r.path || []).forEach(q => { if (q) segs[segs.length - 1].push(q); else segs.push([]); });
+  segs.filter(g => g.length > 1).forEach(g => L.polyline(g, { color: col('--accent2'), weight: 4, opacity: .85 }).addTo(m));
+  L.circleMarker([r.start.lat, r.start.lon], { radius: 7, color: '#fff', weight: 2, fillColor: col('--accent2'), fillOpacity: 1 }).addTo(m).bindTooltip('スタート');
+  L.circleMarker([r.dest.lat, r.dest.lon], { radius: 9, color: '#fff', weight: 2, fillColor: col('--warning'), fillOpacity: 1 }).addTo(m).bindTooltip(r.place.name);
+  const pts = [[r.start.lat, r.start.lon], [r.dest.lat, r.dest.lon], ...(r.path || []).filter(Boolean)];
+  m.fitBounds(L.latLngBounds(pts).pad(0.2));
+  setTimeout(() => m.invalidateSize(), 50);
+}
+function renderList() {
+  const all = loadRecords(), box = document.getElementById('rec-list');
+  if (!all.length) { box.innerHTML = '<p class="empty">まだ記録がありません。ゲームを1回終えると、ここに表示されます。</p>'; return; }
+  box.innerHTML = all.map((r, i) => `<button class="rec-item" data-i="${i}">
+      <span class="when">${esc(fmtDate(r.date))}　<span class="${r.result === 'arrived' ? 'tag-ok' : 'tag-ng'}">${r.result === 'arrived' ? '到着' : 'ギブアップ'}</span></span>
+      <span class="what">${esc(r.place.name)}</span>
+      <span class="stat">${fmtTime(r.timeMs)}<br>${r.walked}m</span>
+    </button>`).join('');
+  box.querySelectorAll('.rec-item').forEach(b => b.onclick = () => {
+    show('detail'); renderRecord(all[+b.dataset.i], document.getElementById('d-body'), false); window.scrollTo(0, 0);
+  });
+}
+function openRecords() { renderList(); show('records'); window.scrollTo(0, 0); }
+document.getElementById('btn-records').onclick = () => { previewStop(); openRecords(); };
+document.getElementById('btn-result-records').onclick = openRecords;
+document.getElementById('btn-rec-back').onclick = () => location.reload();
+document.getElementById('btn-detail-back').onclick = openRecords;
+document.getElementById('btn-rec-clear').onclick = () => {
+  if (!confirm('これまでの記録をすべて削除しますか？元に戻せません。')) return;
+  try { localStorage.removeItem(REC_KEY); } catch (_) {}
+  renderList();
+};
+document.getElementById('btn-rec-csv').onclick = () => {
+  const all = loadRecords(); if (!all.length) return;
+  const head = ['日時', '結果', '目的地', '種類', '距離の設定', '直線距離(m)', '歩いた距離(m)', '直線効率(%)', '所要時間(秒)',
+    'ヒント1_やり直し', 'ヒント2_レーダー', 'ヒント3_方角', '一時停止(回)', '一時停止(秒)', 'BGM', '出発_緯度', '出発_経度', '目的地_緯度', '目的地_経度'];
+  const rows = all.map(r => [fmtDate(r.date), r.result === 'arrived' ? '到着' : 'ギブアップ', r.place.name, r.place.kind, r.range,
+    r.targetDist, r.walked, effOf(r) ?? '', Math.round(r.timeMs / 1000), r.hints[1], r.hints[2], r.hints[3],
+    r.pauseCount, Math.round(r.pausedMs / 1000), r.track, r.start.lat, r.start.lon, r.dest.lat, r.dest.lon]);
+  const csv = '\ufeff' + [head, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `soundnav_records_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+};
 
 /* ---------- pause ---------- */
 function fmtTime(ms) { const t = Math.max(0, Math.floor(ms / 1000)); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; }
@@ -698,6 +939,8 @@ document.getElementById('btn-resume').onclick = () => {
   clearInterval(S.pauseTimer);
   S.pausedMs += Date.now() - S.pauseStart; S.pauseStart = null;
   S.anchor = { ...S.pos };              // movement while paused is not counted
+  if (S.path.length < 1500) S.path.push(null);   // break the drawn line at a pause
+  S.path.push([S.pos.lat, S.pos.lon]);
   S.phase = 'walk';
   updateNear(currentDist(), false);
   setVolume(volumeFor(currentDist(), S.near), 0.8);
@@ -725,8 +968,9 @@ function trendText() {
 }
 function radarSVG(d) {
   // target at center; you are somewhere on the dashed ring (direction is not shown)
-  const scale = r => 14 + 96 * Math.min(r, 300) / 300;
-  const rings = [50, 100, 200, 300].map(r =>
+  const top = Math.max(300, Math.ceil(Math.max(S.targetDist * 1.2, d) / 100) * 100);
+  const scale = r => 14 + 96 * Math.min(r, top) / top;
+  const rings = [50, ...[0.25, 0.5, 1].map(f => Math.round(top * f / 50) * 50)].filter((v, i, a) => a.indexOf(v) === i).map(r =>
     `<circle cx="120" cy="120" r="${scale(r)}" fill="none" stroke="var(--border)" stroke-width="1"/>` +
     `<text x="120" y="${120 - scale(r) + 11}" text-anchor="middle">${r}m</text>`).join('');
   const you = scale(d);
@@ -746,7 +990,7 @@ function useHint(n) {
   const d = S.smoothDist;
   if (n === 1) { closeHints(); runCalib(true); return; }
   if (n === 2) {
-    const band = d < 50 ? '50m以内' : `およそ${Math.round(d / 50) * 50}m`;
+    const band = d < 50 ? '50m以内' : d < 1000 ? `およそ${Math.round(d / 50) * 50}m` : `およそ${(Math.round(d / 100) / 10).toFixed(1)}km`;
     const tr = trendText();
     out.innerHTML = `<h2>レーダー</h2>${radarSVG(d)}
       <div class="hint-result"><div class="big">${band}</div><div class="${tr.cls}">30秒前と比べて：${tr.txt}</div>
@@ -774,7 +1018,10 @@ function testUpdate() {
 }
 document.getElementById('t-range').oninput = testUpdate;
 document.getElementById('btn-soundtest').onclick = async () => {
-  previewStop(); audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
+  previewStop();
+  const tr = document.getElementById('t-range'), mx = Math.round(currentRange().max * 1.2);
+  tr.max = mx; tr.value = Math.round(currentRange().max * 0.8);
+  audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
   show('test'); testUpdate(); pingStart();
 };
 document.getElementById('btn-test-back').onclick = () => { pingStop(); setVolume(0, 0.05); padStop(); S.phase = 'idle'; S.near = false; show('idle'); };
