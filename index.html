@@ -195,7 +195,7 @@ body.debug-on .screen { padding-bottom:120px; }
   </div>
   <div class="card">
     <div class="switch-row">
-      <div class="txt">向きの強調<small>目的地に向かって歩き出すと音が大きく、離れる方へ歩くと小さくなり、そのあと少しずつ元に戻ります</small></div>
+      <div class="txt">向きの強調<small>目的地に向かって歩き出すと音が大きく、離れる方へ歩くと小さくなり、そのあと少しずつ元に戻ります。正しい向きに10秒ほど歩き続けると、小さく「ピピッ」と鳴ります</small></div>
       <label class="switch"><input type="checkbox" id="opt-emph" checked><span class="slider"></span></label>
     </div>
   </div>
@@ -317,6 +317,7 @@ body.debug-on .screen { padding-bottom:120px; }
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button class="btn btn-ghost btn-sm" id="btn-t-up">正しい向きに歩いたとき</button>
     <button class="btn btn-ghost btn-sm" id="btn-t-down">違う向きに歩いたとき</button>
+    <button class="btn btn-ghost btn-sm" id="btn-t-pipi">正しい向きに10秒（ピピッ）</button>
   </div>
   <button class="btn btn-ghost" id="btn-test-back">戻る</button>
 </div>
@@ -365,6 +366,8 @@ const CFG = {
   TREND_STEP: 12,    // evaluate heading-vs-target every 12 m of movement
   TREND_GOOD: 0.5,   // approach ratio ≥ 0.5 (within ~60° of the target) → louder
   TREND_BAD: -0.2,   // approach ratio ≤ -0.2 (walking away) → quieter
+  GOOD_SEC: 10,      // walking the right way this long → faint "pi-pi"
+  GOOD_MIN_MOVE: 8,  // ...and having actually moved at least this far (m) in that time
   USE_PING: false,   // interval ping disabled for now; near-mode cues stay
 };
 
@@ -380,6 +383,7 @@ const S = {
   pauseCount: 0, pausedMs: 0, pauseStart: null, pauseTimer: null,
   place: null, arriveR: 15, path: [], destSource: 'random',
   emphOn: true, trend: null, lastRatio: null, emphCount: { up: 0, down: 0 },
+  recent: [], lastPipi: 0, pipiCount: 0,
   calibTimer: null, debug: false, wakeLock: null,
 };
 
@@ -616,6 +620,18 @@ function emphasize(dir) {
   }
   S.emphCount[dir]++;
 }
+// Faint "pi-pi": two short high blips at a fixed low level (not tied to the BGM volume)
+function pipi() {
+  if (!A.ctx) return;
+  const c = A.ctx, t0 = c.currentTime;
+  [0, 0.13].forEach(dt => {
+    const o = c.createOscillator(), g = c.createGain(), t = t0 + dt;
+    o.type = 'sine'; o.frequency.value = 1760;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.09);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.1);
+  });
+}
 function emphReset() { if (A.emph) { const t = A.ctx.currentTime; A.emph.gain.cancelScheduledValues(t); A.emph.gain.setTargetAtTime(1, t, 0.2); } }
 function setVolume(v, tau = 0.6) { if (A.master) A.master.gain.setTargetAtTime(v, A.ctx.currentTime, tau); }
 function bell(freq, gain, when = 0, decay = 0.9) {
@@ -715,13 +731,29 @@ function onGps(p) {
   if (S.phase === 'walk') {
     walkAudio(S.smoothDist);
     checkTrend(pos, raw);
+    checkGoodStreak(pos, raw);
     if (S.smoothDist <= S.arriveR) finish(false);
   }
   debugUpdate();
 }
 // Every TREND_STEP metres walked, compare how much closer we got with how far we moved.
 // ratio = 1 straight toward the target, 0 sideways, -1 straight away (independent of walking speed).
-function trendReset() { S.trend = S.pos && S.dest ? { pos: { ...S.pos }, d: haversine(S.pos, S.dest) } : null; }
+function trendReset() { S.trend = S.pos && S.dest ? { pos: { ...S.pos }, d: haversine(S.pos, S.dest) } : null; S.recent = []; S.lastPipi = Date.now(); }
+// Compare now with ~10 s ago. If the player kept walking roughly toward the target over that
+// window, give a faint "pi-pi" — at most once every GOOD_SEC seconds.
+function checkGoodStreak(pos, raw) {
+  const now = Date.now();
+  S.recent.push({ t: now, pos: { ...pos }, d: raw });
+  while (S.recent.length && now - S.recent[0].t > 30000) S.recent.shift();
+  if (!S.emphOn || raw <= CFG.ARRIVE_AREA || (S.acc != null && S.acc > 25)) return;
+  if (now - S.lastPipi < CFG.GOOD_SEC * 1000) return;
+  let past = null;
+  for (const r of S.recent) { if (now - r.t >= CFG.GOOD_SEC * 1000) past = r; else break; }
+  if (!past) return;
+  const moved = haversine(past.pos, pos);
+  if (moved < CFG.GOOD_MIN_MOVE || moved > 120) return;
+  if ((past.d - raw) / moved >= CFG.TREND_GOOD) { pipi(); S.lastPipi = now; S.pipiCount++; }
+}
 function checkTrend(pos, raw) {
   if (!S.trend) return trendReset();
   if (S.acc != null && S.acc > 25) return;              // too inaccurate to judge
@@ -853,7 +885,7 @@ async function beginRound() {
   S.targetDist = haversine(S.pos, S.dest);
   S.smoothDist = S.targetDist; S.near = false;
   S.anchor = { ...S.pos }; S.walked = 0; S.history = []; S.path = [[S.pos.lat, S.pos.lon]];
-  S.emphCount = { up: 0, down: 0 }; S.lastRatio = null;
+  S.emphCount = { up: 0, down: 0 }; S.lastRatio = null; S.pipiCount = 0;
   runCalib(false);
 }
 function startWalk(fromRecalib) {
@@ -880,7 +912,7 @@ function finish(gaveUp) {
     v: 1, id: Date.now(), date: new Date().toISOString(),
     result: gaveUp ? 'gaveup' : 'arrived',
     range: S.range ? S.range.label : '', track: currentTrack().title,
-    emph: S.emphOn, emphCount: { ...S.emphCount },
+    emph: S.emphOn, emphCount: { ...S.emphCount }, pipiCount: S.pipiCount,
     place: { name: S.place.name, kind: S.place.kind, named: S.place.named, osm: S.place.osm, source: S.destSource },
     targetDist: Math.round(S.targetDist), walked: Math.round(S.walked),
     timeMs: Math.max(0, Date.now() - (S.startTime || Date.now()) - S.pausedMs),
@@ -927,7 +959,7 @@ function renderRecord(r, el, fresh) {
       <div class="row"><span class="k">実際に歩いた距離</span><span class="v">${r.walked}m</span></div>
       <div class="row"><span class="k">直線効率（直線÷実際）</span><span class="v">${eff == null ? '--' : eff + '%'}</span></div>
       <div class="row"><span class="k">BGM</span><span class="v">${esc(r.track)}</span></div>
-      <div class="row"><span class="k">向きの強調</span><span class="v">${r.emph === undefined ? '--' : r.emph ? `ON（大 ${r.emphCount.up}回・小 ${r.emphCount.down}回）` : 'OFF'}</span></div>
+      <div class="row"><span class="k">向きの強調</span><span class="v">${r.emph === undefined ? '--' : r.emph ? `ON（大 ${r.emphCount.up}回・小 ${r.emphCount.down}回${r.pipiCount != null ? `・ピピッ ${r.pipiCount}回` : ''}）` : 'OFF'}</span></div>
     </div>
     <div class="card">
       <div class="row"><span class="k">ヒント1 キャリブレーションのやり直し</span><span class="v">${r.hints[1]}回</span></div>
@@ -983,10 +1015,10 @@ document.getElementById('btn-rec-clear').onclick = () => {
 document.getElementById('btn-rec-csv').onclick = () => {
   const all = loadRecords(); if (!all.length) return;
   const head = ['日時', '結果', '目的地', '種類', '距離の設定', '直線距離(m)', '歩いた距離(m)', '直線効率(%)', '所要時間(秒)',
-    'ヒント1_やり直し', 'ヒント2_レーダー', 'ヒント3_方角', '一時停止(回)', '一時停止(秒)', 'BGM', '向きの強調', '強調_大(回)', '強調_小(回)', '出発_緯度', '出発_経度', '目的地_緯度', '目的地_経度'];
+    'ヒント1_やり直し', 'ヒント2_レーダー', 'ヒント3_方角', '一時停止(回)', '一時停止(秒)', 'BGM', '向きの強調', '強調_大(回)', '強調_小(回)', 'ピピッ(回)', '出発_緯度', '出発_経度', '目的地_緯度', '目的地_経度'];
   const rows = all.map(r => [fmtDate(r.date), r.result === 'arrived' ? '到着' : 'ギブアップ', r.place.name, r.place.kind, r.range,
     r.targetDist, r.walked, effOf(r) ?? '', Math.round(r.timeMs / 1000), r.hints[1], r.hints[2], r.hints[3],
-    r.pauseCount, Math.round(r.pausedMs / 1000), r.track, r.emph === undefined ? '' : r.emph ? 'ON' : 'OFF', r.emphCount ? r.emphCount.up : '', r.emphCount ? r.emphCount.down : '', r.start.lat, r.start.lon, r.dest.lat, r.dest.lon]);
+    r.pauseCount, Math.round(r.pausedMs / 1000), r.track, r.emph === undefined ? '' : r.emph ? 'ON' : 'OFF', r.emphCount ? r.emphCount.up : '', r.emphCount ? r.emphCount.down : '', r.pipiCount ?? '', r.start.lat, r.start.lon, r.dest.lat, r.dest.lon]);
   const csv = '\ufeff' + [head, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -1091,6 +1123,7 @@ function testUpdate() {
 document.getElementById('t-range').oninput = testUpdate;
 document.getElementById('btn-t-up').onclick = () => emphasize('up');
 document.getElementById('btn-t-down').onclick = () => emphasize('down');
+document.getElementById('btn-t-pipi').onclick = () => pipi();
 document.getElementById('btn-soundtest').onclick = async () => {
   previewStop();
   const tr = document.getElementById('t-range'), mx = Math.round(currentRange().max * 1.2);
@@ -1156,7 +1189,7 @@ function debugUpdate() {
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
     `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm} events=${S.orientEvents}`,
-    `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]} pause=${S.pauseCount} emph=${S.emphOn ? 'ON' : 'OFF'} ratio=${S.lastRatio != null ? S.lastRatio.toFixed(2) : '--'} up/down=${S.emphCount.up}/${S.emphCount.down}`,
+    `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]} pause=${S.pauseCount} emph=${S.emphOn ? 'ON' : 'OFF'} ratio=${S.lastRatio != null ? S.lastRatio.toFixed(2) : '--'} up/down=${S.emphCount.up}/${S.emphCount.down} pipi=${S.pipiCount}`,
   ].join('\n');
 }
 setInterval(debugUpdate, 1000);
