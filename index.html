@@ -177,6 +177,13 @@ body.debug-on .screen { padding-bottom:120px; }
   </div>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
   <div class="note">
+    <strong>音が聞こえないときは</strong><br>
+    ・スマホの音量を上げる（音楽を再生している状態で音量ボタンを押す）<br>
+    ・iPhoneは、本体横の消音スイッチ（またはアクションボタン）で消音モードを解除する<br>
+    ・Bluetoothイヤホンが別の機器につながっていないか確認する<br>
+    ・BGMの「冒頭20秒を試聴」で音が出るか確かめる
+  </div>
+  <div class="note">
     <strong>位置情報の使い方について</strong><br>
     このゲームは、目的地までの距離を測るために位置情報を使います。位置情報はゲームのためだけに使い、ほかの目的には使いません。<br>
     ・位置情報と遊んだ記録は、このスマホのブラウザの中だけに保存されます。開発者を含め、誰にも送られません。<br>
@@ -539,7 +546,28 @@ const A = { ctx: null, master: null, pad: null, oscs: [], src: null, filter: nul
 const CHORD_FAR = [220.00, 261.63, 329.63];   // A minor: calm, a little mysterious
 const CHORD_NEAR = [261.63, 329.63, 392.00];  // C major: brighter = "you're close"
 
+// iPhone: Web Audio is muted by the silent (ring/silent) switch unless the page is in "playback" mode.
+// Newer Safari supports navigator.audioSession; older ones switch mode when an <audio> element plays,
+// so we loop a short silent clip. Both must start inside a tap.
+let unlockEl = null;
+function silentWavUrl() {
+  const sr = 8000, n = sr / 2, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o, str) => [...str].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function unlockIOSAudio() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
+  try {
+    if (!unlockEl) { unlockEl = new Audio(silentWavUrl()); unlockEl.loop = true; unlockEl.setAttribute('playsinline', ''); }
+    const pr = unlockEl.play(); if (pr && pr.catch) pr.catch(() => {});
+  } catch (_) {}
+}
 function audioInit() {
+  unlockIOSAudio();
   if (!A.ctx) {
     const C = window.AudioContext || window.webkitAudioContext;
     A.ctx = new C();
@@ -843,7 +871,7 @@ function compassStart() {
 function calibAudio() {
   const diff = angleDiff(S.heading, S.calibBearing) / 180;        // 0 = facing target
   const k = (Math.cos(diff * Math.PI) + 1) / 2;
-  const v = 0.04 + 0.86 * k * k;                                   // squared: sharper peak
+  const v = 0.12 + 0.78 * k * k;                                   // never fully silent, so the player knows it is playing                                   // squared: sharper peak
   setVolume(v, 0.08);
   document.getElementById('c-fill').style.strokeDashoffset = 440 * (1 - k * k);
   const go = document.getElementById('btn-go');
@@ -859,7 +887,7 @@ function runCalib(recalib) {
   document.getElementById('c-nocompass').hidden = true;
   document.getElementById('c-fill').style.strokeDashoffset = 440;
   document.getElementById('c-voltxt').textContent = '--';
-  pingStop(); padChord(false); setVolume(0.04, 0.1);
+  pingStop(); padChord(false); setVolume(0.12, 0.1);
   show('calib');
   // no time limit: the player decides when to leave. Only watch whether the compass is alive.
   let waited = 0;
@@ -1138,7 +1166,7 @@ async function keepAwake() {
   try { if ('wakeLock' in navigator) S.wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.phase !== 'idle' && S.phase !== 'result') { keepAwake(); if (A.ctx) A.ctx.resume(); }
+  if (document.visibilityState === 'visible' && S.phase !== 'idle' && S.phase !== 'result') { keepAwake(); if (A.ctx) A.ctx.resume(); if (unlockEl) unlockEl.play().catch(() => {}); }
 });
 
 /* ---------- buttons ---------- */
