@@ -125,6 +125,7 @@ input[type=range] { width:100%; accent-color:var(--accent); }
 .mode-pill { display:inline-block; padding:4px 12px; border-radius:999px; font-size:.8rem; font-weight:700; background:var(--surface2); color:var(--fg-dim); }
 .mode-pill.near { background:var(--accent); color:var(--bg); }
 
+body.debug-on .screen { padding-bottom:120px; }
 #debug { position:fixed; left:0; right:0; bottom:0; background:rgba(0,0,0,.85); color:#9aa; font-family:var(--font-num); font-size:.68rem; white-space:pre-wrap; line-height:1.5; z-index:100;
   padding:8px max(16px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 </style>
@@ -138,14 +139,8 @@ input[type=range] { width:100%; accent-color:var(--accent); }
   <div class="note">
     <strong>遊び方</strong><br>
     ・その場でゆっくり一回転し、音が一番大きくなる向きに出発します。<br>
-    ・近づくほど音が大きくなります。残り50mで音色が明るく変わります。<br>
+    ・近づくほど音が大きくなります。残り50mで合図が鳴り、音がはっきり聞こえるようになります。<br>
     ・迷ったら立ち止まって「ヒント」を使えます。
-  </div>
-  <div class="card">
-    <div class="switch-row">
-      <div class="txt">間隔の変化<small>ONにすると、近づくほど「ポーン」の間隔が短くなります</small></div>
-      <label class="switch"><input type="checkbox" id="opt-interval" checked><span class="slider"></span></label>
-    </div>
   </div>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
   <button class="btn btn-primary btn-big" id="btn-start">ゲームを始める</button>
@@ -197,7 +192,6 @@ input[type=range] { width:100%; accent-color:var(--accent); }
     <div class="row"><span class="k">目的地までの直線距離</span><span class="v" id="r-target">--</span></div>
     <div class="row"><span class="k">実際に歩いた距離</span><span class="v" id="r-walked">--</span></div>
     <div class="row"><span class="k">直線効率（直線÷実際）</span><span class="v" id="r-eff">--</span></div>
-    <div class="row"><span class="k">間隔の変化</span><span class="v" id="r-mode">--</span></div>
   </div>
   <div class="card">
     <div class="row"><span class="k">ヒント1 キャリブレーションのやり直し</span><span class="v" id="r-h1">0回</span></div>
@@ -218,13 +212,7 @@ input[type=range] { width:100%; accent-color:var(--accent); }
   <input type="range" id="t-range" min="0" max="300" step="1" value="200" aria-label="目的地までの距離">
   <div class="card">
     <div class="row"><span class="k">音量</span><span class="v" id="t-vol">--</span></div>
-    <div class="row"><span class="k">「ポーン」の間隔</span><span class="v" id="t-int">--</span></div>
-  </div>
-  <div class="card">
-    <div class="switch-row">
-      <div class="txt">間隔の変化</div>
-      <label class="switch"><input type="checkbox" id="opt-interval2"><span class="slider"></span></label>
-    </div>
+    <div class="row"><span class="k">使用中の音</span><span class="v" id="t-src">--</span></div>
   </div>
   <button class="btn btn-ghost" id="btn-test-back">戻る</button>
 </div>
@@ -264,11 +252,13 @@ const CFG = {
   STEP_MIN: 5,       // walked-distance accumulation step (m), filters jitter
   PING_FAR: 2.5,     // ping interval far away (s)
   PING_NEAR: 0.8,    // ping interval at destination (s), interval mode only
+  USE_PING: false,   // interval ping disabled for now; near-mode cues stay
+  SOUND_FILE: 'sound/ambient.mp3', // free-licensed loop; synth pad is used if missing
 };
 
 const S = {
   phase: 'idle',
-  intervalMode: true,
+  intervalMode: false,   // interval ping is off for now (kept in code for later tests)
   pos: null, acc: null, start: null, dest: null, targetDist: null,
   smoothDist: null, near: false, history: [],
   anchor: null, walked: 0, startTime: null,
@@ -279,13 +269,6 @@ const S = {
 };
 
 /* ---------- settings (per-device convenience) ---------- */
-try { const v = localStorage.getItem('soundnav.interval'); if (v !== null) S.intervalMode = v === '1'; } catch (_) {}
-const optA = document.getElementById('opt-interval'), optB = document.getElementById('opt-interval2');
-function syncOpt() { optA.checked = optB.checked = S.intervalMode; }
-function setIntervalMode(on) { S.intervalMode = on; syncOpt(); try { localStorage.setItem('soundnav.interval', on ? '1' : '0'); } catch (_) {} }
-optA.onchange = () => setIntervalMode(optA.checked);
-optB.onchange = () => { setIntervalMode(optB.checked); if (S.phase === 'test') testUpdate(); };
-syncOpt();
 
 /* ---------- geo math ---------- */
 const R = 6371000, rad = Math.PI / 180;
@@ -331,7 +314,7 @@ function intervalFor(d, near) {
 }
 
 /* ---------- audio engine ---------- */
-const A = { ctx: null, master: null, pad: null, oscs: [], filter: null, pingTimer: null, pingOn: false };
+const A = { ctx: null, master: null, pad: null, oscs: [], filter: null, pingTimer: null, pingOn: false, useFile: false, buffer: null, loading: null };
 const CHORD_FAR = [220.00, 261.63, 329.63];   // A minor: calm, a little mysterious
 const CHORD_NEAR = [261.63, 329.63, 392.00];  // C major: brighter = "you're close"
 
@@ -343,9 +326,30 @@ function audioInit() {
   }
   if (A.ctx.state === 'suspended') A.ctx.resume();
 }
-function padStart() {
+// Try to load the free-licensed loop once. If it is missing or fails, fall back to the synth pad.
+function loadSoundFile() {
+  if (A.loading) return A.loading;
+  A.loading = fetch(CFG.SOUND_FILE)
+    .then(r => { if (!r.ok) throw new Error('no file'); return r.arrayBuffer(); })
+    .then(b => new Promise((res, rej) => A.ctx.decodeAudioData(b, res, rej)))
+    .then(buf => { A.buffer = buf; })
+    .catch(() => { A.buffer = null; });
+  return A.loading;
+}
+async function padStart() {
+  if (A.pad) return;
+  await loadSoundFile();
   if (A.pad) return;
   const c = A.ctx;
+  if (A.buffer) {
+    // music loop → low-pass filter (muffled when far, clear when near) → master
+    A.useFile = true;
+    A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = FILE_FILTER_FAR; A.filter.Q.value = 0.5;
+    A.pad = c.createGain(); A.pad.gain.value = 0.9;
+    const src = c.createBufferSource(); src.buffer = A.buffer; src.loop = true;
+    src.connect(A.filter); A.filter.connect(A.pad); A.pad.connect(A.master); src.start();
+    return;
+  }
   A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = 900; A.filter.Q.value = 0.4;
   const lfo = c.createOscillator(), lfoG = c.createGain();
   lfo.frequency.value = 0.15; lfoG.gain.value = 200; lfo.connect(lfoG); lfoG.connect(A.filter.frequency); lfo.start();
@@ -357,8 +361,10 @@ function padStart() {
   });
   A.oscs.push(lfo);
 }
+const FILE_FILTER_FAR = 1200, FILE_FILTER_NEAR = 12000;
 function padChord(near) {
   if (!A.pad) return;
+  if (A.useFile) { A.filter.frequency.setTargetAtTime(near ? FILE_FILTER_NEAR : FILE_FILTER_FAR, A.ctx.currentTime, 0.5); return; }
   const t = A.ctx.currentTime, ch = near ? CHORD_NEAR : CHORD_FAR;
   ch.forEach((f, i) => A.oscs[i].frequency.setTargetAtTime(f, t, 0.25));
   A.filter.frequency.setTargetAtTime(near ? 1600 : 900, t, 0.4);
@@ -380,7 +386,7 @@ function pingLoop() {
   bell(S.near ? 1046.5 : 880, 0.35);
   A.pingTimer = setTimeout(pingLoop, intervalFor(d, S.near) * 1000);
 }
-function pingStart() { if (A.pingOn) return; A.pingOn = true; pingLoop(); }
+function pingStart() { if (!CFG.USE_PING || A.pingOn) return; A.pingOn = true; pingLoop(); }
 function pingStop() { A.pingOn = false; clearTimeout(A.pingTimer); }
 // Cue on entering near mode: rising three notes. Leaving: soft falling two notes.
 function cueNearIn() { [784, 988, 1175].forEach((f, i) => bell(f, 0.45, i * 0.14, 1.2)); }
@@ -527,7 +533,6 @@ function finish(gaveUp) {
   document.getElementById('r-target').textContent = `${Math.round(S.targetDist)}m`;
   document.getElementById('r-walked').textContent = `${Math.round(S.walked)}m`;
   document.getElementById('r-eff').textContent = S.walked > 0 ? `${Math.min(100, Math.round(S.targetDist / S.walked * 100))}%` : '--';
-  document.getElementById('r-mode').textContent = S.intervalMode ? 'ON' : 'OFF';
   document.getElementById('r-h1').textContent = `${S.hints[1]}回`;
   document.getElementById('r-h2').textContent = `${S.hints[2]}回`;
   document.getElementById('r-h3').textContent = `${S.hints[3]}回`;
@@ -560,9 +565,9 @@ function radarSVG(d) {
   const scale = r => 14 + 96 * Math.min(r, 300) / 300;
   const rings = [50, 100, 200, 300].map(r =>
     `<circle cx="120" cy="120" r="${scale(r)}" fill="none" stroke="var(--border)" stroke-width="1"/>` +
-    `<text x="${120 + scale(r) + 2}" y="118">${r}</text>`).join('');
+    `<text x="120" y="${120 - scale(r) + 11}" text-anchor="middle">${r}m</text>`).join('');
   const you = scale(d);
-  return `<svg class="radar-svg" width="240" height="240" viewBox="0 0 250 240" aria-label="レーダー">
+  return `<svg class="radar-svg" width="240" height="240" viewBox="0 0 240 240" aria-label="レーダー">
     ${rings}
     <circle cx="120" cy="120" r="${you}" fill="none" stroke="var(--warning)" stroke-width="3" stroke-dasharray="6 5"/>
     <circle cx="120" cy="120" r="6" fill="var(--accent)"/>
@@ -602,11 +607,11 @@ function testUpdate() {
   const pill = document.getElementById('t-pill');
   pill.textContent = S.near ? '近距離モード' : '通常モード'; pill.classList.toggle('near', S.near);
   document.getElementById('t-vol').textContent = `${Math.round(v * 100)}%`;
-  document.getElementById('t-int').textContent = `${intervalFor(d, S.near).toFixed(1)}秒`;
+  document.getElementById('t-src').textContent = A.useFile ? '音源ファイル' : '合成音（仮）';
 }
 document.getElementById('t-range').oninput = testUpdate;
-document.getElementById('btn-soundtest').onclick = () => {
-  audioInit(); padStart(); S.phase = 'test'; S.near = false; padChord(false);
+document.getElementById('btn-soundtest').onclick = async () => {
+  audioInit(); await padStart(); S.phase = 'test'; S.near = false; padChord(false);
   show('test'); testUpdate(); pingStart();
 };
 document.getElementById('btn-test-back').onclick = () => { pingStop(); setVolume(0, 0.2); S.phase = 'idle'; S.near = false; show('idle'); };
@@ -623,8 +628,9 @@ document.addEventListener('visibilitychange', () => {
 function show(n) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + n)); }
 document.getElementById('btn-start').onclick = async () => {
   if (!navigator.geolocation) { document.querySelector('#s-idle .sub').textContent = 'このブラウザは位置情報に対応していません。'; return; }
-  audioInit(); padStart();                 // audio must be unlocked inside a tap
-  await requestCompassPermission();         // iOS: must also be inside a tap
+  audioInit();                             // audio must be unlocked inside a tap
+  const perm = requestCompassPermission();  // iOS: must also be called inside the tap
+  await padStart(); await perm;
   compassStart(); keepAwake();
   S.phase = 'gps'; show('gps'); gpsStart();
 };
@@ -633,12 +639,12 @@ document.getElementById('btn-force').onclick = () => {
 };
 document.getElementById('btn-go').onclick = () => startWalk(S.phase === 'recalib');
 document.getElementById('btn-again').onclick = () => location.reload();
-document.getElementById('btn-debug').onclick = () => { S.debug = !S.debug; document.getElementById('debug').hidden = !S.debug; debugUpdate(); };
+document.getElementById('btn-debug').onclick = () => { S.debug = !S.debug; document.getElementById('debug').hidden = !S.debug; document.body.classList.toggle('debug-on', S.debug); debugUpdate(); };
 
 function debugUpdate() {
   if (!S.debug) return;
   document.getElementById('debug').textContent = [
-    `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} interval=${S.intervalMode ? 'ON' : 'OFF'}`,
+    `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
     `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm}`,
     `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]}`,
