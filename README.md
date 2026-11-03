@@ -17,7 +17,7 @@
 
 ## デモ
 
-中間発表用の簡易プロトタイプ（SoundNav）を、GitHub Pagesで公開している。
+中間発表用の簡易プロトタイプ（Soundwalk）を、GitHub Pagesで公開している。
 
 https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 

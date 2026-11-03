@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>SoundNav</title>
+<title>Soundwalk</title>
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
 <style>
@@ -166,7 +166,7 @@ body.debug-on .screen { padding-bottom:120px; }
 
 <!-- ===== IDLE ===== -->
 <div id="s-idle" class="screen active">
-  <h1 class="app-name">SoundNav</h1>
+  <h1 class="app-name">Soundwalk</h1>
   <p class="sub">画面を見ずに、<strong>音だけ</strong>で隠れた目的地を探すゲームです。出発前に一度だけ方向を確かめ、あとは音の変化を頼りに歩きます。</p>
   <div class="note">
     <strong>遊び方</strong><br>
@@ -175,6 +175,13 @@ body.debug-on .screen { padding-bottom:120px; }
     ・迷ったら立ち止まって「ヒント」を使えます。
   </div>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
+  <div class="note">
+    <strong>位置情報の使い方について</strong><br>
+    このゲームは、目的地までの距離を測るために位置情報を使います。位置情報はゲームのためだけに使い、ほかの目的には使いません。<br>
+    ・位置情報と遊んだ記録は、このスマホのブラウザの中だけに保存されます。開発者を含め、誰にも送られません。<br>
+    ・目的地の候補を探すときだけ、約100mの精度にぼかした現在地を、地図データの検索サービス（OpenStreetMapのOverpass API）に送ります。<br>
+    ・記録は「これまでの記録」からいつでも削除できます。
+  </div>
   <div class="card">
     <div class="switch-row">
       <label class="txt" for="opt-track">BGM<small>探索中に流れる音楽</small></label>
@@ -323,7 +330,7 @@ body.debug-on .screen { padding-bottom:120px; }
 <script src="lib/leaflet/leaflet.js"></script>
 <script>
 /* ============================================================
-   SoundNav — audio-only location discovery game (mid-term demo)
+   Soundwalk — audio-only location discovery game (mid-term demo)
    phases: idle → gps → calib → walk ⇄ recalib → result
    ============================================================ */
 // Destination distance presets (straight-line metres). Walking ~80 m/min; searching by sound
@@ -446,8 +453,11 @@ function placeKind(t) {
   if (t.amenity === 'place_of_worship') return t.religion === 'shinto' ? '神社' : t.religion === 'buddhist' ? 'お寺' : t.religion === 'christian' ? '教会' : '礼拝所';
   return 'ランドマーク';
 }
+// Privacy: only a blurred position (~100 m grid) leaves the phone. The radius is widened by 100 m to
+// make up for it, and the exact distance band is applied afterwards on the phone with the true position.
 async function fetchLandmarks(p, radius) {
-  const a = `(around:${Math.round(radius)},${p.lat.toFixed(6)},${p.lon.toFixed(6)})`;
+  const blur = { lat: Math.round(p.lat * 1000) / 1000, lon: Math.round(p.lon * 1000) / 1000 };
+  const a = `(around:${Math.round(radius + 100)},${blur.lat.toFixed(3)},${blur.lon.toFixed(3)})`;
   const q = `[out:json][timeout:25];(
     nwr${a}[leisure~"^(park|playground)$"];
     node${a}[tourism~"^(artwork|viewpoint)$"];
@@ -919,7 +929,7 @@ document.getElementById('btn-rec-csv').onclick = () => {
   const csv = '\ufeff' + [head, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `soundnav_records_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `soundwalk_records_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
 };
 
