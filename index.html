@@ -5,25 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>おとさんぽ</title>
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
 <style>
-/* Layout: single-column screen stack, phone-first, large tap targets
-   Palette: sonar dark (deep navy + cyan signal), light variant for daylight */
+/* Layout: single-column screen stack on a white page; one calm green accent.
+   Deliberately light-only: white reads best outdoors in daylight. */
 :root {
-  --bg:#0b0d14; --surface:#131620; --surface2:#1c1f2e; --border:#252840;
-  --fg:#dde3f0; --fg-dim:#7a83a0; --accent:#3dd6e0; --accent2:#7c8cf8;
-  --success:#52e8a0; --warning:#f5c542; --danger:#f06060;
-  --font-ui:'Space Grotesk', system-ui, sans-serif;
-  --font-num:'JetBrains Mono', ui-monospace, monospace;
-  color-scheme: dark;
-}
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg:#f0f4f8; --surface:#ffffff; --surface2:#e6ebf3; --border:#d0d8e8;
-    --fg:#1a1e2e; --fg-dim:#66728f; --accent:#0a97a1; --accent2:#4a5af0;
-    --success:#1a9e6a; --warning:#9a7000; --danger:#cc3838;
-    color-scheme: light;
-  }
+  --bg:#ffffff; --surface:#f5f7f3; --surface2:#ebefe8; --border:#dde3d8;
+  --fg:#1e2a23; --fg-dim:#5e6a62; --accent:#22805a; --accent-soft:#e3f1ea; --accent2:#3d7bd1;
+  --success:#22805a; --warning:#a86a12; --danger:#c2412f;
+  --font-ui:'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  --font-num:'Zen Maru Gothic', 'Hiragino Sans', system-ui, sans-serif;
+  color-scheme: light;
 }
 [hidden] { display:none !important; }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
@@ -40,29 +32,31 @@ body {
   padding-block:max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
 }
 .screen.active { display:flex; }
-.app-sub { display:block; font-size:.8rem; font-weight:500; letter-spacing:.2em; color:var(--fg-dim); margin-top:2px; }
-.app-name { font-size:2rem; font-weight:700; color:var(--accent); letter-spacing:-0.02em; }
+.app-sub { display:block; font-size:.78rem; font-weight:500; letter-spacing:.25em; color:var(--fg-dim); margin-top:4px; }
+.app-name { font-size:2.3rem; font-weight:900; color:var(--fg); letter-spacing:.04em; text-wrap:balance; }
+.app-name .o { color:var(--accent); }
+.logo-wave { display:block; margin:0 auto 6px; }
 .label { font-size:.75rem; font-weight:700; letter-spacing:.12em; color:var(--fg-dim); }
 .sub { font-size:.95rem; color:var(--fg-dim); line-height:1.7; max-width:340px; }
 .sub strong { color:var(--fg); }
 .btn {
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  border:none; border-radius:999px; padding:14px 32px; font:inherit; font-weight:700;
+  border:none; border-radius:16px; padding:14px 28px; font:inherit; font-weight:700;
   cursor:pointer; min-width:180px; touch-action:manipulation; transition:transform .12s, opacity .15s;
 }
 .btn:active { transform:scale(.96); }
 .btn:focus-visible { outline:3px solid var(--accent2); outline-offset:3px; }
-.btn-primary { background:var(--accent); color:var(--bg); }
-.btn-ghost { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+.btn-primary { background:var(--accent); color:#fff; box-shadow:0 2px 0 #17603f; }
+.btn-ghost { background:var(--bg); color:var(--accent); border:2px solid var(--border); }
 .btn-danger { background:transparent; color:var(--danger); border:2px solid var(--danger); }
 .btn-sm { padding:10px 20px; font-size:.875rem; min-width:120px; }
 .btn-big { padding:20px 40px; font-size:1.15rem; min-width:220px; }
-.card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:12px 18px; width:100%; text-align:left; }
+.card { background:var(--surface); border:none; border-radius:18px; padding:12px 18px; width:100%; text-align:left; }
 .row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; font-size:.9rem; }
 .row + .row { border-top:1px solid var(--border); }
 .row .k { color:var(--fg-dim); }
 .row .v { font-family:var(--font-num); font-weight:700; font-size:.88rem; font-variant-numeric:tabular-nums; text-align:right; }
-.note { background:var(--surface2); border-radius:12px; padding:12px 16px; font-size:.82rem; color:var(--fg-dim); line-height:1.65; width:100%; text-align:left; }
+.note { background:var(--accent-soft); border-radius:12px; padding:12px 16px; font-size:.82rem; color:var(--fg-dim); line-height:1.65; width:100%; text-align:left; }
 .note strong { color:var(--fg); }
 
 /* toggle switch */
@@ -74,9 +68,22 @@ body {
 .slider { position:absolute; inset:0; background:var(--surface2); border:1px solid var(--border); border-radius:999px; transition:background .2s; cursor:pointer; }
 .slider::before { content:""; position:absolute; width:22px; height:22px; left:3px; top:3px; border-radius:50%; background:var(--fg-dim); transition:transform .2s, background .2s; }
 .switch input:checked + .slider { background:var(--accent); }
-.switch input:checked + .slider::before { transform:translateX(22px); background:var(--bg); }
+.switch input:checked + .slider::before { transform:translateX(22px); background:#fff; }
 .switch input:focus-visible + .slider { outline:3px solid var(--accent2); outline-offset:2px; }
 
+/* sound-wave bars (walking / waiting screens) */
+.wave { display:flex; align-items:center; justify-content:center; gap:7px; height:110px; }
+.wave i { display:block; width:9px; height:30%; border-radius:6px; background:var(--accent); opacity:.85; animation:wv 1.6s ease-in-out infinite; }
+.wave i:nth-child(2) { animation-delay:.2s } .wave i:nth-child(3) { animation-delay:.4s } .wave i:nth-child(4) { animation-delay:.6s } .wave i:nth-child(5) { animation-delay:.8s }
+@keyframes wv { 0%,100% { height:22%; } 50% { height:90%; } }
+@media (prefers-reduced-motion: reduce) { .wave i { animation:none; height:50%; } }
+details.more { width:100%; text-align:left; }
+details.more summary { cursor:pointer; color:var(--fg-dim); font-size:.85rem; padding:6px 2px; }
+.big-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
+.stat-box { background:var(--surface); border-radius:16px; padding:12px 14px; text-align:left; }
+.stat-box .k { font-size:.75rem; color:var(--fg-dim); display:block; }
+.stat-box .v { font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.help-link { font-weight:700; }
 /* radar rings */
 .radar { position:relative; width:180px; height:180px; flex-shrink:0; }
 .radar .ring { position:absolute; inset:0; border-radius:50%; border:2px solid var(--accent); opacity:0; animation:ring 3s ease-out infinite; }
@@ -101,7 +108,7 @@ body {
 .meter .fill { height:100%; width:0; background:linear-gradient(90deg, var(--accent2), var(--accent)); transition:width .25s; }
 
 /* hint sheet */
-.overlay { position:fixed; inset:0; background:rgba(5,7,12,.72); display:flex; align-items:flex-end; justify-content:center; z-index:50;
+.overlay { position:fixed; inset:0; background:rgba(30,42,35,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50;
   padding:0 max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
 .sheet { background:var(--surface); border:1px solid var(--border); border-radius:20px; width:100%; max-width:480px; padding:20px; display:flex; flex-direction:column; gap:12px; max-height:90%; overflow:auto; }
 .sheet h2 { font-size:1.1rem; }
@@ -111,7 +118,7 @@ body {
 .hint-item .t { flex:1; min-width:0; }
 .hint-item .t small { display:block; color:var(--fg-dim); font-size:.78rem; }
 .hint-item.danger .n, .hint-item.danger .t > span { color:var(--danger); }
-.hint-result { background:var(--surface2); border:1px solid var(--warning); border-radius:14px; padding:16px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; }
+.hint-result { background:var(--surface); border:none; border-radius:14px; padding:16px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; }
 .hint-result .big { font-family:var(--font-num); font-size:1.6rem; font-weight:700; color:var(--warning); }
 .trend-up { color:var(--success); font-weight:700; }
 .trend-down { color:var(--danger); font-weight:700; }
@@ -126,7 +133,7 @@ input[type=range] { width:100%; accent-color:var(--accent); }
 .bignum { font-family:var(--font-num); font-size:3.5rem; font-weight:700; color:var(--accent); line-height:1; font-variant-numeric:tabular-nums; }
 .bignum small { font-size:1rem; color:var(--fg-dim); }
 .mode-pill { display:inline-block; padding:4px 12px; border-radius:999px; font-size:.8rem; font-weight:700; background:var(--surface2); color:var(--fg-dim); }
-.mode-pill.near { background:var(--accent); color:var(--bg); }
+.mode-pill.near { background:var(--accent); color:#fff; }
 
 body.debug-on .screen { padding-bottom:120px; }
 .sel { font:inherit; font-size:.9rem; color:var(--fg); background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; max-width:60%; }
@@ -135,7 +142,8 @@ body.debug-on .screen { padding-bottom:120px; }
 .chips { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; }
 .chip { font:inherit; font-size:.85rem; text-align:left; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--fg); cursor:pointer; line-height:1.35; }
 .chip small { display:block; color:var(--fg-dim); font-size:.74rem; }
-.chip[aria-checked="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+.chip { background:var(--bg) !important; }
+.chip[aria-checked="true"] { border-color:var(--accent); background:var(--accent-soft) !important; box-shadow:inset 0 0 0 1px var(--accent); }
 .chip:focus-visible { outline:3px solid var(--accent2); outline-offset:2px; }
 .card-title { font-size:.9rem; text-align:left; width:100%; }
 .card-title small { display:block; color:var(--fg-dim); font-size:.76rem; }
@@ -167,29 +175,17 @@ body.debug-on .screen { padding-bottom:120px; }
 
 <!-- ===== IDLE ===== -->
 <div id="s-idle" class="screen active">
-  <h1 class="app-name">おとさんぽ<small class="app-sub">Soundwalk</small></h1>
-  <p class="sub">画面を見ずに、<strong>音だけ</strong>で隠れた目的地を探すゲームです。出発前に一度だけ方向を確かめ、あとは音の変化を頼りに歩きます。</p>
+  <svg class="logo-wave" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 14 Q10 2 18 14 T34 14 T50 14 T62 14" fill="none" stroke="#22805a" stroke-width="4" stroke-linecap="round"/></svg>
+  <h1 class="app-name"><span class="o">おと</span>さんぽ<small class="app-sub">Soundwalk</small></h1>
+  <p class="sub">画面を見ずに、<strong>音だけ</strong>で隠れた目的地を探すゲームです。</p>
   <div class="note">
     <strong>遊び方</strong><br>
     ・その場でゆっくり一回転し、音が一番大きくなる向きに出発します。<br>
     ・遠いうちは音楽が小さく、こもって聞こえます。近づくほど大きくなり、残り50mで合図が鳴って、はっきり聞こえるようになります。<br>
+    ・目的地の方へ歩き出すと音がぐっと大きくなり、離れる方へ歩くと小さくなります。正しい向きに10秒ほど歩き続けると、小さく「ピピッ」と鳴ります。<br>
     ・迷ったら立ち止まって「ヒント」を使えます。
   </div>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
-  <div class="note">
-    <strong>音が聞こえないときは</strong><br>
-    ・スマホの音量を上げる（音楽を再生している状態で音量ボタンを押す）<br>
-    ・iPhoneは、本体横の消音スイッチ（またはアクションボタン）で消音モードを解除する<br>
-    ・Bluetoothイヤホンが別の機器につながっていないか確認する<br>
-    ・BGMの「冒頭20秒を試聴」で音が出るか確かめる
-  </div>
-  <div class="note">
-    <strong>位置情報の使い方について</strong><br>
-    このゲームは、目的地までの距離を測るために位置情報を使います。位置情報はゲームのためだけに使い、ほかの目的には使いません。<br>
-    ・位置情報と遊んだ記録は、このスマホのブラウザの中だけに保存されます。開発者を含め、誰にも送られません。<br>
-    ・目的地の候補を探すときだけ、約100mの精度にぼかした現在地を、地図データの検索サービス（OpenStreetMapのOverpass API）に送ります。<br>
-    ・記録は「これまでの記録」からいつでも削除できます。
-  </div>
   <div class="card">
     <div class="switch-row">
       <label class="txt" for="opt-track">BGM<small>探索中に流れる音楽</small></label>
@@ -198,12 +194,6 @@ body.debug-on .screen { padding-bottom:120px; }
     <div class="preview-row">
       <button class="btn btn-ghost btn-sm" id="btn-preview">冒頭20秒を試聴</button>
       <span id="preview-msg" class="credit" aria-live="polite"></span>
-    </div>
-  </div>
-  <div class="card">
-    <div class="switch-row">
-      <div class="txt">向きの強調<small>目的地に向かって歩き出すと音が大きく、離れる方へ歩くと小さくなり、そのあと少しずつ元に戻ります。正しい向きに10秒ほど歩き続けると、小さく「ピピッ」と鳴ります</small></div>
-      <label class="switch"><input type="checkbox" id="opt-emph" checked><span class="slider"></span></label>
     </div>
   </div>
   <div class="card stack">
@@ -225,18 +215,34 @@ body.debug-on .screen { padding-bottom:120px; }
     <button class="btn btn-ghost btn-sm" id="btn-soundtest">音のテスト（室内用）</button>
     <button class="btn btn-ghost btn-sm" id="btn-debug" style="opacity:.6">開発者表示</button>
   </div>
+  <a class="help-link" href="help.html" target="_blank" rel="noopener">困ったときは（よくある質問）</a>
   <p class="credit">音楽：<a href="https://otologic.jp" target="_blank" rel="noopener">OtoLogic</a>（<a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener">CC BY 4.0</a>）<br>地図・場所のデータ：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
+</div>
+
+<!-- ===== PERMISSION INTRO ===== -->
+<div id="s-perm" class="screen">
+  <span class="label">はじめに</span>
+  <p class="sub">このあと、許可を求める画面が出ます。<br><strong>どちらも「許可」を選んでください。</strong></p>
+  <div class="card stack">
+    <div class="card-title">1. 位置情報<small>目的地までの距離を測るために使います。iPhoneでは「正確な位置情報」をオンのままにしてください。</small></div>
+    <div class="card-title">2. 動作と方向（コンパス）<small>出発するときに、向いている方角を確かめるために使います。iPhoneでのみ表示されます。</small></div>
+  </div>
+  <div class="note">⚠️ 一度「許可しない」を選ぶと、ブラウザがそれを覚えてしまい、設定を変えるまで許可の画面が出なくなります。</div>
+  <div class="note"><strong>位置情報の使い方</strong><br>位置情報はゲームのためだけに使います。位置情報と遊んだ記録はこのスマホの中だけに保存され、開発者を含め誰にも送られません。目的地を探すときだけ、約100mの精度にぼかした現在地を地図データの検索サービス（OpenStreetMap）に送ります。<br><a href="help.html#privacy" target="_blank" rel="noopener">くわしく見る</a></div>
+  <button class="btn btn-primary btn-big" id="btn-perm-go">許可して進む</button>
+  <button class="btn btn-ghost btn-sm" id="btn-perm-back">戻る</button>
 </div>
 
 <!-- ===== GPS ===== -->
 <div id="s-gps" class="screen">
   <span class="label">現在地を取得中</span>
-  <div class="radar"><div class="ring"></div><div class="ring"></div><div class="ring"></div><div class="dot"></div></div>
+  <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="gps-status" class="sub">GPSを確認しています…</div>
   <p class="sub" style="font-size:.85rem">精度が ±30m 以内になると自動で次へ進みます。</p>
   <div id="gps-help" class="help" hidden>
     <strong>位置情報を許可する方法</strong>
     <div id="gps-help-body"></div>
+    <a href="help.html#location" target="_blank" rel="noopener">くわしい直し方（困ったときは）</a>
     <button class="btn btn-primary btn-sm" id="btn-gps-retry">もう一度試す</button>
   </div>
   <button class="btn btn-ghost btn-sm" id="btn-force">精度が粗くても進む</button>
@@ -255,6 +261,7 @@ body.debug-on .screen { padding-bottom:120px; }
     <span>許可されると、自動でこの案内が消えます。</span>
     <p id="orient-status" aria-live="polite"></p>
     <div id="orient-help-body"></div>
+    <a href="help.html#motion" target="_blank" rel="noopener">くわしい直し方（困ったときは）</a>
     <button class="btn btn-primary btn-sm" id="btn-orient-retry">もう一度許可を求める</button>
     <button class="btn btn-ghost btn-sm" id="btn-skip-calib">方向を確かめずに出発する</button>
   </div>
@@ -264,7 +271,7 @@ body.debug-on .screen { padding-bottom:120px; }
 <!-- ===== WALK ===== -->
 <div id="s-walk" class="screen">
   <span class="label">探索中</span>
-  <div class="radar"><div class="ring"></div><div class="ring"></div><div class="ring"></div><div class="dot"></div></div>
+  <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <p class="sub">画面は見なくて大丈夫です。<br>音が大きくなる方へ歩いてください。</p>
   <p class="sub" style="font-size:.82rem">迷ったら<strong>立ち止まってから</strong>ヒントを使いましょう。</p>
   <div class="btn-row" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
@@ -370,9 +377,7 @@ const CFG = {
   STEP_MIN: 5,       // walked-distance accumulation step (m), filters jitter
   PING_FAR: 2.5,     // ping interval far away (s)
   PING_NEAR: 0.8,    // ping interval at destination (s), interval mode only
-  TREND_STEP: 12,    // evaluate heading-vs-target every 12 m of movement
-  TREND_GOOD: 0.5,   // approach ratio ≥ 0.5 (within ~60° of the target) → louder
-  TREND_BAD: -0.2,   // approach ratio ≤ -0.2 (walking away) → quieter
+  TREND_GOOD: 0.5,   // "pi-pi": approach ratio over 10 s ≥ 0.5 (within ~60° of the target)
   GOOD_SEC: 10,      // walking the right way this long → faint "pi-pi"
   GOOD_MIN_MOVE: 8,  // ...and having actually moved at least this far (m) in that time
   USE_PING: false,   // interval ping disabled for now; near-mode cues stay
@@ -389,7 +394,7 @@ const S = {
   gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0, orientEvents: 0,
   pauseCount: 0, pausedMs: 0, pauseStart: null, pauseTimer: null,
   place: null, arriveR: 15, path: [], destSource: 'random',
-  emphOn: true, trend: null, lastRatio: null, emphCount: { up: 0, down: 0 },
+  emphOn: true, dirState: 'idle', gpsSpeed: null, gpsHeading: null, lastRatio: null, emphCount: { up: 0, down: 0 },
   recent: [], lastPipi: 0, pipiCount: 0,
   calibTimer: null, debug: false, wakeLock: null,
 };
@@ -464,9 +469,6 @@ document.getElementById('opt-custom').oninput = e => {
   try { localStorage.setItem('soundnav.custom', String(customM)); } catch (_) {}
 };
 syncRangeUI();
-try { const e = localStorage.getItem('soundnav.emph'); if (e !== null) S.emphOn = e === '1'; } catch (_) {}
-document.getElementById('opt-emph').checked = S.emphOn;
-document.getElementById('opt-emph').onchange = e => { S.emphOn = e.target.checked; try { localStorage.setItem('soundnav.emph', S.emphOn ? '1' : '0'); } catch (_) {} };
 
 /* ---------- landmark destinations from OpenStreetMap (Overpass API) ---------- */
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
@@ -740,6 +742,7 @@ function gpsStart() {
 function onGps(p) {
   const pos = { lat: p.coords.latitude, lon: p.coords.longitude };
   S.pos = pos; S.acc = p.coords.accuracy;
+  S.gpsSpeed = p.coords.speed; S.gpsHeading = p.coords.heading;   // course over ground while moving (may be null)
   if (S.phase === 'gps') {
     document.getElementById('gps-status').textContent = `精度 ±${Math.round(S.acc)}m`;
     if (S.acc <= CFG.GOOD_ACC) beginRound();
@@ -758,21 +761,23 @@ function onGps(p) {
   if (S.history.length > 600) S.history.shift();
   if (S.phase === 'walk') {
     walkAudio(S.smoothDist);
+    pushRecent(pos, raw);
     checkTrend(pos, raw);
     checkGoodStreak(pos, raw);
     if (S.smoothDist <= S.arriveR) finish(false);
   }
   debugUpdate();
 }
-// Every TREND_STEP metres walked, compare how much closer we got with how far we moved.
-// ratio = 1 straight toward the target, 0 sideways, -1 straight away (independent of walking speed).
-function trendReset() { S.trend = S.pos && S.dest ? { pos: { ...S.pos }, d: haversine(S.pos, S.dest) } : null; S.recent = []; S.lastPipi = Date.now(); }
+function trendReset() { S.dirState = 'idle'; S.recent = []; S.lastPipi = Date.now(); }
+function pushRecent(pos, raw) {
+  const now = Date.now();
+  S.recent.push({ t: now, pos: { ...pos }, d: raw });
+  while (S.recent.length && now - S.recent[0].t > 30000) S.recent.shift();
+}
 // Compare now with ~10 s ago. If the player kept walking roughly toward the target over that
 // window, give a faint "pi-pi" — at most once every GOOD_SEC seconds.
 function checkGoodStreak(pos, raw) {
   const now = Date.now();
-  S.recent.push({ t: now, pos: { ...pos }, d: raw });
-  while (S.recent.length && now - S.recent[0].t > 30000) S.recent.shift();
   if (!S.emphOn || raw <= CFG.ARRIVE_AREA || (S.acc != null && S.acc > 25)) return;
   if (now - S.lastPipi < CFG.GOOD_SEC * 1000) return;
   let past = null;
@@ -782,19 +787,41 @@ function checkGoodStreak(pos, raw) {
   if (moved < CFG.GOOD_MIN_MOVE || moved > 120) return;
   if ((past.d - raw) / moved >= CFG.TREND_GOOD) { pipi(); S.lastPipi = now; S.pipiCount++; }
 }
-function checkTrend(pos, raw) {
-  if (!S.trend) return trendReset();
-  if (S.acc != null && S.acc > 25) return;              // too inaccurate to judge
-  const moved = haversine(S.trend.pos, pos);
-  if (moved < CFG.TREND_STEP) return;
-  if (moved > 80) return trendReset();                  // GPS jump
-  const ratio = (S.trend.d - raw) / moved;
-  S.lastRatio = ratio;
-  if (S.emphOn && raw > CFG.ARRIVE_AREA) {              // skip right next to the goal
-    if (ratio >= CFG.TREND_GOOD) emphasize('up');
-    else if (ratio <= CFG.TREND_BAD) emphasize('down');
+// Direction of travel: prefer the GPS course (reported once walking, ~1–2 s), otherwise the
+// bearing from the latest point at least 4 m back within the last 8 s.
+function travelDirection(pos) {
+  if (S.gpsSpeed != null && S.gpsSpeed >= 0.6 && S.gpsHeading != null && !isNaN(S.gpsHeading)) return S.gpsHeading;
+  const now = Date.now();
+  for (let k = S.recent.length - 1; k >= 0; k--) {
+    const r = S.recent[k];
+    if (now - r.t > 8000) break;
+    if (haversine(r.pos, pos) >= 4) return bearing(r.pos, pos);
   }
-  S.trend = { pos: { ...pos }, d: raw };
+  return null;
+}
+function isStopped(pos) {
+  if (S.gpsSpeed != null && !isNaN(S.gpsSpeed)) return S.gpsSpeed < 0.3;
+  const now = Date.now(), old = S.recent.find(r => now - r.t <= 4000);
+  return old ? haversine(old.pos, pos) < 2 : false;
+}
+// One exaggerated cue per change of direction: louder the moment you start heading the right way,
+// quieter the moment you turn away. Standing still resets, so setting off again cues again.
+function checkTrend(pos, raw) {
+  if (!S.emphOn || raw <= CFG.ARRIVE_AREA || (S.acc != null && S.acc > 25)) return;
+  if (isStopped(pos)) { S.dirState = 'idle'; return; }
+  const dir = travelDirection(pos);
+  if (dir == null) return;
+  const diff = angleDiff(dir, bearing(pos, S.dest));
+  S.lastRatio = Math.cos(diff * rad);
+  let st = S.dirState || 'idle';
+  if (diff <= 45) st = 'good';
+  else if (diff >= 120) st = 'bad';
+  else if ((st === 'good' && diff > 75) || (st === 'bad' && diff < 100) || st === 'idle') st = 'neutral';
+  if (st !== S.dirState) {
+    if (st === 'good') emphasize('up');
+    else if (st === 'bad') emphasize('down');
+    S.dirState = st;
+  }
 }
 function onGpsErr(e) {
   const m = { 1: '位置情報の利用が許可されていません。ブラウザの設定で許可してから、もう一度お試しください。',
@@ -802,7 +829,7 @@ function onGpsErr(e) {
               3: 'GPSの取得に時間がかかっています。屋外でもう一度お試しください。' };
   if (S.phase !== 'gps') return;
   document.getElementById('gps-status').textContent = m[e.code] || 'GPSでエラーが発生しました。';
-  if (e.code === 1) document.getElementById('gps-help').hidden = false;
+  if (e.code === 1) { document.getElementById('gps-help').hidden = false; setPermIntroSeen(false); }
 }
 document.getElementById('btn-gps-retry').onclick = () => {
   document.getElementById('gps-help').hidden = true;
@@ -968,6 +995,7 @@ function fmtDate(iso) {
 }
 function effOf(r) { return r.walked > 0 ? Math.min(100, Math.round(r.targetDist / r.walked * 100)) : null; }
 function osmLink(p) { return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=18/${p.lat}/${p.lon}`; }
+function hintTotal(r) { return (r.hints[1] || 0) + (r.hints[2] || 0) + (r.hints[3] || 0); }
 function renderRecord(r, el, fresh) {
   const ok = r.result === 'arrived', eff = effOf(r);
   const head = fresh
@@ -978,24 +1006,22 @@ function renderRecord(r, el, fresh) {
     : '<small>この距離に公園などが見つからなかったため、ランダムな地点にしました</small>';
   el.innerHTML = `${head}
     <div class="place">目的地：${esc(r.place.name)}${r.place.named ? `<small>${esc(r.place.kind)}</small>` : ''}${src}</div>
+    <div class="big-stats">
+      <div class="stat-box"><span class="k">かかった時間</span><span class="v">${fmtTime(r.timeMs)}</span></div>
+      <div class="stat-box"><span class="k">歩いた距離</span><span class="v">${r.walked}m</span></div>
+      <div class="stat-box"><span class="k">目的地までの直線距離</span><span class="v">${r.targetDist}m</span></div>
+      <div class="stat-box"><span class="k">ヒント使用回数</span><span class="v">${hintTotal(r)}回</span></div>
+    </div>
     <div class="map" id="${el.id}-map"></div>
     <a href="${osmLink(r.dest)}" target="_blank" rel="noopener">OpenStreetMapで目的地を開く</a>
-    <div class="card">
-      <div class="row"><span class="k">距離の設定</span><span class="v">${esc(r.range)}</span></div>
-      <div class="row"><span class="k">所要時間</span><span class="v">${fmtTime(r.timeMs)}</span></div>
-      <div class="row"><span class="k">目的地までの直線距離</span><span class="v">${r.targetDist}m</span></div>
-      <div class="row"><span class="k">実際に歩いた距離</span><span class="v">${r.walked}m</span></div>
-      <div class="row"><span class="k">直線効率（直線÷実際）</span><span class="v">${eff == null ? '--' : eff + '%'}</span></div>
-      <div class="row"><span class="k">BGM</span><span class="v">${esc(r.track)}</span></div>
-      <div class="row"><span class="k">向きの強調</span><span class="v">${r.emph === undefined ? '--' : r.emph ? `ON（大 ${r.emphCount.up}回・小 ${r.emphCount.down}回${r.pipiCount != null ? `・ピピッ ${r.pipiCount}回` : ''}）` : 'OFF'}</span></div>
-    </div>
-    <div class="card">
-      <div class="row"><span class="k">ヒント1 キャリブレーションのやり直し</span><span class="v">${r.hints[1]}回</span></div>
-      <div class="row"><span class="k">ヒント2 レーダー</span><span class="v">${r.hints[2]}回</span></div>
-      <div class="row"><span class="k">ヒント3 大まかな方角</span><span class="v">${r.hints[3]}回</span></div>
-      <div class="row"><span class="k">ギブアップ</span><span class="v">${ok ? 'なし' : 'あり'}</span></div>
-      <div class="row"><span class="k">一時停止</span><span class="v">${r.pauseCount ? `${r.pauseCount}回（合計 ${fmtTime(r.pausedMs)}）` : '0回'}</span></div>
-    </div>`;
+    <details class="more"><summary>くわしい記録</summary>
+      <div class="card">
+        <div class="row"><span class="k">距離の設定</span><span class="v">${esc(r.range)}</span></div>
+        <div class="row"><span class="k">直線効率（直線÷歩いた距離）</span><span class="v">${eff == null ? '--' : eff + '%'}</span></div>
+        <div class="row"><span class="k">一時停止</span><span class="v">${r.pauseCount ? `${r.pauseCount}回（合計 ${fmtTime(r.pausedMs)}）` : 'なし'}</span></div>
+        <div class="row"><span class="k">BGM</span><span class="v">${esc(r.track)}</span></div>
+      </div>
+    </details>`;
   drawMap(document.getElementById(`${el.id}-map`), r);
 }
 let mapInst = {};
@@ -1172,17 +1198,29 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- buttons ---------- */
 // switch screens and always start the new one from the top (the first screen is long and is usually scrolled down)
 function show(n) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + n)); window.scrollTo(0, 0); }
-document.getElementById('btn-start').onclick = async () => {
+// Show a short "please tap Allow" screen before the browser's own prompts, the first time
+// and again after a refusal, because a refusal is remembered by the browser.
+const PERM_KEY = 'soundnav.permIntro';
+function permIntroSeen() { try { return localStorage.getItem(PERM_KEY) === '1'; } catch (_) { return false; } }
+function setPermIntroSeen(v) { try { v ? localStorage.setItem(PERM_KEY, '1') : localStorage.removeItem(PERM_KEY); } catch (_) {} }
+document.getElementById('btn-start').onclick = () => {
   if (!navigator.geolocation) { document.querySelector('#s-idle .sub').textContent = 'このブラウザは位置情報に対応していません。'; return; }
   previewStop();
+  if (!permIntroSeen()) { show('perm'); return; }
+  startGame();
+};
+document.getElementById('btn-perm-go').onclick = () => { setPermIntroSeen(true); startGame(); };
+document.getElementById('btn-perm-back').onclick = () => show('idle');
+async function startGame() {
   audioInit();                             // audio must be unlocked inside a tap
   const perm = requestCompassPermission();  // iOS: must also be called inside the tap
   const btn = document.getElementById('btn-start'); btn.textContent = '音楽を読み込み中…'; btn.disabled = true;
   await padStart(); await perm;
   btn.textContent = 'ゲームを始める'; btn.disabled = false;
+  if (IS_IOS && S.orientPerm === 'denied') setPermIntroSeen(false);
   compassStart(); keepAwake();
   S.phase = 'gps'; show('gps'); gpsStart();
-};
+}
 document.getElementById('btn-force').onclick = () => {
   if (S.pos) beginRound(); else document.getElementById('gps-status').textContent = 'まだ現在地を取得できていません。少し待ってからもう一度押してください。';
 };
@@ -1192,7 +1230,7 @@ document.getElementById('btn-orient-retry').onclick = async () => {
   await requestCompassPermission();   // must be inside a tap on iOS
   compassStart();
   const st = document.getElementById('orient-status');
-  if (S.orientPerm !== 'granted') {
+  if (IS_IOS && S.orientPerm !== 'granted') {
     st.innerHTML = IS_IOS
       ? '許可されていません。一度「許可しない」を選ぶと、Safariを完全に終了するまで許可の画面が出ないことがあります。下の手順2を試してください。'
       : '許可されていません。下の手順でモーションセンサーを許可してください。';
@@ -1218,7 +1256,7 @@ function debugUpdate() {
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
     `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm} events=${S.orientEvents}`,
-    `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]} pause=${S.pauseCount} emph=${S.emphOn ? 'ON' : 'OFF'} ratio=${S.lastRatio != null ? S.lastRatio.toFixed(2) : '--'} up/down=${S.emphCount.up}/${S.emphCount.down} pipi=${S.pipiCount}`,
+    `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]} pause=${S.pauseCount} emph=${S.emphOn ? 'ON' : 'OFF'} dir=${S.dirState} spd=${S.gpsSpeed != null ? (+S.gpsSpeed).toFixed(1) : '--'} cos=${S.lastRatio != null ? S.lastRatio.toFixed(2) : '--'} up/down=${S.emphCount.up}/${S.emphCount.down} pipi=${S.pipiCount}`,
   ].join('\n');
 }
 setInterval(debugUpdate, 1000);

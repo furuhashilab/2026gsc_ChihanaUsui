@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>困ったときは｜おとさんぽ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<style>
+:root {
+  --bg:#ffffff; --surface:#f5f7f3; --border:#dde3d8;
+  --fg:#1e2a23; --fg-dim:#5e6a62; --accent:#22805a; --accent-soft:#e3f1ea;
+  --font-ui:'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--fg); font-family:var(--font-ui); font-size:16px; line-height:1.75;
+  padding:max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+main { max-width:640px; margin-inline:auto; display:flex; flex-direction:column; gap:14px; }
+h1 { font-size:1.6rem; font-weight:900; text-wrap:balance; }
+h1 span { color:var(--accent); }
+h2 { font-size:.8rem; letter-spacing:.12em; color:var(--fg-dim); margin-top:14px; }
+.lead { color:var(--fg-dim); font-size:.92rem; }
+details { background:var(--surface); border-radius:16px; padding:4px 16px; }
+details[open] { padding-bottom:14px; }
+summary { cursor:pointer; font-weight:700; padding:10px 0; list-style:none; display:flex; gap:10px; align-items:baseline; }
+summary::before { content:"Q"; color:var(--accent); font-weight:900; }
+summary::-webkit-details-marker { display:none; }
+summary:focus-visible { outline:3px solid var(--accent); outline-offset:2px; border-radius:6px; }
+details > div { font-size:.92rem; display:flex; flex-direction:column; gap:8px; }
+ol, ul { padding-left:1.4em; display:flex; flex-direction:column; gap:4px; }
+.os { font-weight:700; color:var(--accent); }
+.tip { background:var(--accent-soft); border-radius:12px; padding:10px 12px; font-size:.88rem; }
+a { color:var(--accent); font-weight:700; }
+.back { display:inline-block; margin-top:10px; }
+</style>
+</head>
+<body>
+<main>
+  <a href="./" class="back">← おとさんぽに戻る</a>
+  <h1><span>おと</span>さんぽ　困ったときは</h1>
+  <p class="lead">よくある質問と、その直し方です。項目をタップすると答えが開きます。</p>
+
+  <h2>許可・設定</h2>
+
+  <details id="location">
+    <summary>「位置情報の利用が許可されていません」と出る／許可の画面が出ない</summary>
+    <div>
+      <p>一度「許可しない」を選ぶと、ブラウザがそれを覚えていて、許可の画面がもう出なくなります。次の方法で許可に戻せます。キャッシュを消す必要はありません。</p>
+      <p class="os">iPhone（Safari）</p>
+      <ol>
+        <li>Safariのアドレスバー左の「ぁあ」（または「aA」）→「Webサイトの設定」→「位置情報」を「許可」にする</li>
+        <li>「設定」→「プライバシーとセキュリティ」→「位置情報サービス」がオンか確認する</li>
+        <li>同じ画面の「Safari Webサイト」を「使用中のみ」にし、「正確な位置情報」をオンにする</li>
+        <li>ページを再読み込みする</li>
+      </ol>
+      <p class="os">Android（Chrome）</p>
+      <ol>
+        <li>アドレスバー左のアイコン →「権限」→「位置情報」を「許可」にする</li>
+        <li>「設定」→「アプリ」→「Chrome」→「権限」→「位置情報」を「アプリの使用中のみ許可」にする</li>
+        <li>スマホ本体の「位置情報」がオンか確認し、ページを再読み込みする</li>
+      </ol>
+      <p class="tip">LINEやInstagramなどのアプリの中で開くと、位置情報が使えないことがあります。メニューの「ブラウザで開く」で、SafariやChromeから開き直してください。</p>
+    </div>
+  </details>
+
+  <details id="motion">
+    <summary>「動作と方向」が許可できない／コンパスが反応しない</summary>
+    <div>
+      <p>出発前の向きの確認にコンパスを使います。許可を求める画面が出るのはiPhoneだけです。</p>
+      <p class="os">iPhone（Safari）</p>
+      <ol>
+        <li>まず、Safariを完全に終了する（画面の下から上にスワイプしてアプリの一覧を出し、Safariを上にはじく）</li>
+        <li>Safariを開き直してページを開き、「ゲームを始める」から進んで「許可」を選ぶ</li>
+        <li>それでも許可の画面が出ないときだけ、「設定」→「アプリ」→「Safari」→「詳細」→「Webサイトデータ」で「github.io」を削除して開き直す</li>
+      </ol>
+      <p class="os">Android（Chrome）</p>
+      <ol>
+        <li>アドレスバー左のアイコン →「権限」（または「サイトの設定」）→「モーションセンサー」を「許可」にする</li>
+        <li>ページを再読み込みする</li>
+      </ol>
+      <p class="tip">許可されているのに方角が合わないときは、スマホで空中に「8の字」を数回描くと、コンパスが調整されます。機種によっては、コンパスのセンサーが付いていないこともあります。</p>
+    </div>
+  </details>
+
+  <details id="gps">
+    <summary>現在地がなかなか取得できない</summary>
+    <div>
+      <p>屋外の開けた場所なら、ふつうは数秒〜15秒ほどで取得できます。時間がかかるときは次を確認してください。</p>
+      <ul>
+        <li>屋内や高い建物の間にいる → 開けた場所に出る</li>
+        <li>iPhoneの「正確な位置情報」がオフ → オンにする（上の「位置情報」の項目を参照）</li>
+        <li>省電力モードがオン → オフにする</li>
+      </ul>
+      <p>どうしても進まないときは「精度が粗くても進む」で始められますが、距離の判定がずれやすくなります。</p>
+    </div>
+  </details>
+
+  <h2>音</h2>
+
+  <details id="sound">
+    <summary>音が聞こえない</summary>
+    <div>
+      <ol>
+        <li>音が鳴っている状態で、音量ボタンを押して音量を上げる</li>
+        <li>iPhoneは、本体横の消音スイッチ（またはアクションボタン）で消音モードを解除する</li>
+        <li>Bluetoothイヤホンが、別の機器につながっていないか確認する</li>
+        <li>最初の画面の「冒頭20秒を試聴」で音が出るか確かめる</li>
+      </ol>
+    </div>
+  </details>
+
+  <details id="sound-meaning">
+    <summary>音の変化はどういう意味？</summary>
+    <div>
+      <ul>
+        <li>目的地が遠いうちは、音楽が小さく、こもって聞こえます。近づくほど大きく、はっきりします。</li>
+        <li>目的地の方へ歩き出すと、音がぐっと大きくなります。離れる方へ歩き出すと、小さくなります。そのあと、少しずつ元の大きさに戻ります。</li>
+        <li>正しい向きに10秒ほど歩き続けると、小さく「ピピッ」と鳴ります。</li>
+        <li>残り50mになると合図が鳴り、音がはっきり聞こえるようになります。</li>
+      </ul>
+    </div>
+  </details>
+
+  <h2>遊び方</h2>
+
+  <details id="pocket">
+    <summary>歩いているとき、スマホはどう持てばいい？ポケットに入れていい？</summary>
+    <div>
+      <p>ポケットやかばんに入れて大丈夫です。歩いている間は、スマホの向きではなく、GPSで分かる「あなたが進んでいる方向」と「目的地までの距離」を使っています。</p>
+      <p>スマホの向きを使うのは、出発前（とヒントの「やり直し」）の向きの確認のときだけです。そのときは、スマホを体の前に持って回ってください。</p>
+      <p class="tip">画面が消えると音とGPSが止まります。画面はつけたままポケットに入れてください。ポケットの中で画面に触れてしまうと、ボタンが押されることがあります。</p>
+    </div>
+  </details>
+
+  <details id="screen-off">
+    <summary>画面が消えると止まってしまう</summary>
+    <div>
+      <p>ブラウザで動くアプリの仕組み上、画面が消えると音とGPSが止まります。このアプリは画面が自動で消えないようにしていますが、機種によっては効かないことがあります。その場合は、スマホの「自動ロック（画面の消灯）」までの時間を長くしてください。</p>
+    </div>
+  </details>
+
+  <details id="danger">
+    <summary>目的地が入れない場所・危ない場所だった</summary>
+    <div>
+      <p>目的地は、OpenStreetMapという地図データに登録された公園や神社などから選んでいます。データが古かったり、入れる時間が決まっていたりすることがあります。</p>
+      <p>入れない場所や危ないと感じる場所には、近づかないでください。ヒントの「ギブアップ」で終了できます。</p>
+    </div>
+  </details>
+
+  <h2>記録・プライバシー</h2>
+
+  <details id="records">
+    <summary>記録が消えた／別のスマホで見られない</summary>
+    <div>
+      <p>記録は、遊んだスマホのブラウザの中だけに保存しています。別のスマホやブラウザでは見られません。ブラウザの履歴やWebサイトデータを消すと、記録も消えます。残しておきたい記録は「これまでの記録」→「CSVで保存」で書き出してください。</p>
+    </div>
+  </details>
+
+  <details id="privacy">
+    <summary>位置情報はどう使われる？</summary>
+    <div>
+      <ul>
+        <li>位置情報は、目的地までの距離を測るなど、ゲームのためだけに使います。</li>
+        <li>位置情報と遊んだ記録は、このスマホのブラウザの中だけに保存されます。開発者を含め、誰にも送られません。</li>
+        <li>目的地の候補を探すときだけ、約100mの精度にぼかした現在地を、地図データの検索サービス（OpenStreetMapのOverpass API）に送ります。</li>
+        <li>結果画面の地図を表示するとき、そのあたりの地図の画像をOpenStreetMapから読み込みます。</li>
+        <li>記録は「これまでの記録」からいつでも削除できます。</li>
+      </ul>
+    </div>
+  </details>
+
+  <p class="lead" style="margin-top:16px">解決しないときは、開発者（青山学院大学 古橋研究室 臼井）にお知らせください。</p>
+  <a href="./" class="back">← おとさんぽに戻る</a>
+</main>
+<script>
+  // open the item named in the URL (e.g. help.html#motion)
+  const t = location.hash && document.getElementById(location.hash.slice(1));
+  if (t && t.tagName === 'DETAILS') { t.open = true; t.scrollIntoView(); }
+</script>
+</body>
+</html>
