@@ -59,7 +59,7 @@ https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 
 ### BGM
 
-- OtoLogicの4曲と合成音から選べる
+- OtoLogicの4曲から選べる
 - 選ぶときに、冒頭20秒を試聴できる
 
 ### ヒント・一時停止

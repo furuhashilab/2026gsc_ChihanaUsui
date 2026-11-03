@@ -178,13 +178,13 @@ body.debug-on .screen { padding-bottom:120px; }
   <svg class="logo-wave" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 14 Q10 2 18 14 T34 14 T50 14 T62 14" fill="none" stroke="#22805a" stroke-width="4" stroke-linecap="round"/></svg>
   <h1 class="app-name"><span class="o">おと</span>さんぽ<small class="app-sub">Soundwalk</small></h1>
   <p class="sub">画面を見ずに、<strong>音だけ</strong>で隠れた目的地を探すゲームです。</p>
-  <div class="note">
-    <strong>遊び方</strong><br>
+  <details class="note more" style="background:var(--accent-soft)">
+    <summary style="color:var(--fg);font-weight:700">遊び方</summary>
     ・その場でゆっくり一回転し、音が一番大きくなる向きに出発します。<br>
     ・遠いうちは音楽が小さく、こもって聞こえます。近づくほど大きくなり、残り50mで合図が鳴って、はっきり聞こえるようになります。<br>
     ・目的地の方へ歩き出すと音がぐっと大きくなり、離れる方へ歩くと小さくなります。正しい向きに10秒ほど歩き続けると、小さく「ピピッ」と鳴ります。<br>
     ・迷ったら立ち止まって「ヒント」を使えます。
-  </div>
+  </details>
   <div class="note">⚠️ 歩行中は周囲の安全を確認してください。イヤホンは<strong>片耳</strong>を推奨します。画面は消さずに、ポケットなどに入れて歩いてください（画面が消えると音とGPSが止まります）。</div>
   <div class="card">
     <div class="switch-row">
@@ -245,7 +245,7 @@ body.debug-on .screen { padding-bottom:120px; }
     <a href="help.html#location" target="_blank" rel="noopener">くわしい直し方（困ったときは）</a>
     <button class="btn btn-primary btn-sm" id="btn-gps-retry">もう一度試す</button>
   </div>
-  <button class="btn btn-ghost btn-sm" id="btn-force">精度が粗くても進む</button>
+  <p class="sub" style="font-size:.85rem"><a href="help.html#gps" target="_blank" rel="noopener">なかなか進まないときは</a></p>
 </div>
 
 <!-- ===== CALIBRATION (also used for re-calibration) ===== -->
@@ -533,7 +533,6 @@ const TRACKS = [
   { id: 'haru',    title: 'Haru Ha Utatane（Slow）', file: 'sound/haru_ha_utatane_slow.mp3' },
   { id: 'spec',    title: 'Specification',          file: 'sound/specification.mp3' },
   { id: 'still',   title: 'Still In Love',          file: 'sound/still_in_love.mp3' },
-  { id: 'synth',   title: '合成音（シンプル）',      file: null },
 ];
 let trackId = 'osampo';
 try { const v = localStorage.getItem('soundnav.track'); if (TRACKS.some(t => t.id === v)) trackId = v; } catch (_) {}
@@ -1221,9 +1220,6 @@ async function startGame() {
   compassStart(); keepAwake();
   S.phase = 'gps'; show('gps'); gpsStart();
 }
-document.getElementById('btn-force').onclick = () => {
-  if (S.pos) beginRound(); else document.getElementById('gps-status').textContent = 'まだ現在地を取得できていません。少し待ってからもう一度押してください。';
-};
 document.getElementById('btn-go').onclick = () => startWalk(S.phase === 'recalib');
 document.getElementById('btn-orient-retry').onclick = async () => {
   const before = S.orientEvents;
