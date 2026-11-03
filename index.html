@@ -129,6 +129,10 @@ body.debug-on .screen { padding-bottom:120px; }
 .sel { font:inherit; font-size:.9rem; color:var(--fg); background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; max-width:60%; }
 .sel:focus-visible { outline:3px solid var(--accent2); }
 .credit { font-size:.75rem; color:var(--fg-dim); }
+.help { background:var(--surface); border:1px solid var(--warning); border-radius:14px; padding:14px 16px; width:100%; text-align:left; font-size:.85rem; line-height:1.65; display:flex; flex-direction:column; gap:8px; }
+.help strong { color:var(--warning); }
+.help ol { padding-left:1.3em; display:flex; flex-direction:column; gap:4px; }
+.help .btn { align-self:center; }
 .preview-row { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; padding-top:10px; margin-top:8px; border-top:1px solid var(--border); }
 #debug { position:fixed; left:0; right:0; bottom:0; background:rgba(0,0,0,.85); color:#9aa; font-family:var(--font-num); font-size:.68rem; white-space:pre-wrap; line-height:1.5; z-index:100;
   padding:8px max(16px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
@@ -171,6 +175,11 @@ body.debug-on .screen { padding-bottom:120px; }
   <div class="radar"><div class="ring"></div><div class="ring"></div><div class="ring"></div><div class="dot"></div></div>
   <div id="gps-status" class="sub">GPSを確認しています…</div>
   <p class="sub" style="font-size:.85rem">精度が ±30m 以内になると自動で次へ進みます。</p>
+  <div id="gps-help" class="help" hidden>
+    <strong>位置情報を許可する方法</strong>
+    <div id="gps-help-body"></div>
+    <button class="btn btn-primary btn-sm" id="btn-gps-retry">もう一度試す</button>
+  </div>
   <button class="btn btn-ghost btn-sm" id="btn-force">精度が粗くても進む</button>
 </div>
 
@@ -186,7 +195,13 @@ body.debug-on .screen { padding-bottom:120px; }
     <div class="lr"><span>音の大きさ</span><span id="c-voltxt">--</span></div>
     <div class="track"><div class="fill" id="c-volbar"></div></div>
   </div>
-  <p id="c-nocompass" class="sub" style="font-size:.8rem;color:var(--warning)" hidden>コンパスを読み取れません。位置情報と「動作と方向」へのアクセスが許可されているか確認してください。</p>
+  <div id="c-nocompass" class="help" hidden>
+    <strong>コンパス（動作と方向）が使えていません</strong>
+    <span>許可されるまで、タイマーは止まったまま待ちます。</span>
+    <div id="orient-help-body"></div>
+    <button class="btn btn-primary btn-sm" id="btn-orient-retry">もう一度許可を求める</button>
+    <button class="btn btn-ghost btn-sm" id="btn-skip-calib">方向を確かめずに出発する</button>
+  </div>
   <button class="btn btn-primary btn-big" id="btn-go" hidden>この向きに出発</button>
 </div>
 
@@ -278,7 +293,7 @@ const S = {
   anchor: null, walked: 0, startTime: null,
   hints: { 1: 0, 2: 0, 3: 0 }, gaveUp: false,
   heading: null, hx: null, hy: null, calibBearing: null,
-  gpsWatch: null, orientPerm: 'unknown', compassSeen: false,
+  gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0,
   calibTimer: null, debug: false, wakeLock: null,
 };
 
@@ -514,8 +529,42 @@ function onGpsErr(e) {
   const m = { 1: '位置情報の利用が許可されていません。ブラウザの設定で許可してから、もう一度お試しください。',
               2: 'GPSの信号を取得できません。屋外に出てお試しください。',
               3: 'GPSの取得に時間がかかっています。屋外でもう一度お試しください。' };
-  if (S.phase === 'gps') document.getElementById('gps-status').textContent = m[e.code] || 'GPSでエラーが発生しました。';
+  if (S.phase !== 'gps') return;
+  document.getElementById('gps-status').textContent = m[e.code] || 'GPSでエラーが発生しました。';
+  if (e.code === 1) document.getElementById('gps-help').hidden = false;
 }
+document.getElementById('btn-gps-retry').onclick = () => {
+  document.getElementById('gps-help').hidden = true;
+  document.getElementById('gps-status').textContent = 'GPSを確認しています…';
+  if (S.gpsWatch != null) navigator.geolocation.clearWatch(S.gpsWatch);
+  gpsStart();
+};
+
+/* ---------- permission help (shown only when something is blocked) ---------- */
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const INAPP_NOTE = '<p>LINEやInstagramなどのアプリ内からURLを開いた場合は、メニューの「ブラウザで開く」でSafariやChromeから開き直してください。</p>';
+const HELP = {
+  gps: IS_IOS ? `<ol>
+      <li>「設定」→「プライバシーとセキュリティ」→「位置情報サービス」をオンにする</li>
+      <li>同じ画面の「Safari Webサイト」を「使用中のみ」にし、「正確な位置情報」をオンにする</li>
+      <li>Safariのアドレスバー左の「ぁあ」→「Webサイトの設定」→「位置情報」を「許可」にする</li>
+      <li>ページを再読み込みして、もう一度試す</li></ol>${INAPP_NOTE}`
+    : `<ol>
+      <li>スマホの「位置情報」をオンにする（画面上から下にスワイプして出るメニュー）</li>
+      <li>Chromeのアドレスバー左のアイコン →「権限」→「位置情報」を「許可」にする</li>
+      <li>「設定」→「アプリ」→「Chrome」→「権限」→「位置情報」を「アプリの使用中のみ許可」にする</li>
+      <li>ページを再読み込みして、もう一度試す</li></ol>${INAPP_NOTE}`,
+  orient: IS_IOS ? `<ol>
+      <li>下の「もう一度許可を求める」を押し、出てきた画面で「許可」を押す</li>
+      <li>画面が出ない場合は、このタブを閉じてSafariを終了し、ページを開き直して「ゲームを始める」から「許可」を押す</li>
+      <li>それでも出ない場合は、「設定」→「アプリ」→「Safari」→「詳細」→「Webサイトデータ」で「github.io」のデータを削除してから開き直す</li></ol>${INAPP_NOTE}`
+    : `<ol>
+      <li>Chromeのアドレスバー左のアイコン →「権限」（または「サイトの設定」）→「モーションセンサー」を「許可」にする</li>
+      <li>ページを再読み込みして、もう一度試す</li>
+      <li>それでも動かない場合、その機種にコンパス（磁気センサー）が付いていない可能性があります</li></ol>${INAPP_NOTE}`,
+};
+document.getElementById('gps-help-body').innerHTML = HELP.gps;
+document.getElementById('orient-help-body').innerHTML = HELP.orient;
 
 /* ---------- compass ---------- */
 async function requestCompassPermission() {
@@ -535,7 +584,8 @@ function onOrient(e) {
   S.hx = S.hx == null ? x : S.hx * 0.7 + x * 0.3;
   S.hy = S.hy == null ? y : S.hy * 0.7 + y * 0.3;
   S.heading = (Math.atan2(S.hy, S.hx) / rad + 360) % 360;
-  S.compassSeen = true;
+  S.compassSeen = true; S.lastHeadingAt = Date.now();
+  if (S.phase === 'calib' || S.phase === 'recalib') document.getElementById('c-nocompass').hidden = true;
   if (S.phase === 'calib' || S.phase === 'recalib') calibAudio();
 }
 function compassStart() {
@@ -565,13 +615,20 @@ function runCalib(recalib) {
   num.textContent = T;
   pingStop(); padChord(false); setVolume(0.04, 0.1);
   show('calib');
-  let left = T;
+  let left = T, waited = 0;
   clearInterval(S.calibTimer);
+  // the countdown only moves while compass readings are arriving; otherwise it waits
   S.calibTimer = setInterval(() => {
+    const alive = S.lastHeadingAt && Date.now() - S.lastHeadingAt < 1500;
+    if (!alive) {
+      waited++;
+      num.innerHTML = '待機中';
+      if (waited >= 3) document.getElementById('c-nocompass').hidden = false;
+      return;
+    }
     left--;
     num.textContent = Math.max(0, left);
     fill.style.strokeDashoffset = 440 * (left / T);
-    if (left === T - 3 && !S.compassSeen) document.getElementById('c-nocompass').hidden = false;
     if (left <= 0) { clearInterval(S.calibTimer); num.textContent = 'OK'; document.getElementById('btn-go').hidden = false; }
   }, 1000);
 }
@@ -718,6 +775,12 @@ document.getElementById('btn-force').onclick = () => {
   if (S.pos) beginRound(); else document.getElementById('gps-status').textContent = 'まだ現在地を取得できていません。少し待ってからもう一度押してください。';
 };
 document.getElementById('btn-go').onclick = () => startWalk(S.phase === 'recalib');
+document.getElementById('btn-orient-retry').onclick = async () => {
+  await requestCompassPermission();   // must be inside a tap on iOS
+  const body = document.getElementById('orient-help-body');
+  if (S.orientPerm !== 'granted' && !document.getElementById('orient-fail')) body.insertAdjacentHTML('afterbegin', '<p id="orient-fail" style="color:var(--danger)">許可されませんでした。下の手順を試してください。</p>');
+};
+document.getElementById('btn-skip-calib').onclick = () => startWalk(S.phase === 'recalib');
 document.getElementById('btn-again').onclick = () => location.reload();
 document.getElementById('btn-debug').onclick = () => { S.debug = !S.debug; document.getElementById('debug').hidden = !S.debug; document.body.classList.toggle('debug-on', S.debug); debugUpdate(); };
 
