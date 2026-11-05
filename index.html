@@ -247,6 +247,13 @@ body.debug-on .screen { padding-bottom:120px; }
   <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="gps-status" class="sub">GPSを確認しています…</div>
   <p class="sub" style="font-size:.85rem">精度が ±30m 以内になると自動で次へ進みます。</p>
+  <div id="find-fail" class="help" hidden>
+    <strong>場所のデータを取得できませんでした</strong>
+    <span>地図データの検索サービスが混み合っているか、通信が不安定な可能性があります。少し待ってから、もう一度試してください。</span>
+    <small id="find-fail-why" style="color:var(--fg-dim);word-break:break-all"></small>
+    <button class="btn btn-primary btn-sm" id="btn-find-retry">もう一度探す</button>
+    <button class="btn btn-ghost btn-sm" id="btn-find-random">ランダムな地点で遊ぶ</button>
+  </div>
   <div id="gps-help" class="help" hidden>
     <strong>位置情報を許可する方法</strong>
     <div id="gps-help-body"></div>
@@ -394,6 +401,7 @@ const CFG = {
   PING_NEAR: 0.8,    // ping interval at destination (s), interval mode only
   PIPI_GOOD: 0.7,    // "pi-pi": approach ratio over 10 s ≥ 0.7 (within ~45° of the target)
   GOOD_SEC: 10,      // walking the right way this long → faint "pi-pi"
+  PIPI_INTERVAL: 30, // ...and at most once every 30 s
   GOOD_MIN_MOVE: 8,  // ...and having actually moved at least this far (m) in that time
   USE_PING: false,   // interval ping disabled for now; near-mode cues stay
 };
@@ -548,13 +556,15 @@ function cachePut(b, radius, list) {
   } catch (_) {}
 }
 // Returns { list, error }. list is null when every server failed.
-async function fetchLandmarks(p, radius) {
+// A bounding box is much cheaper for the servers than "around" (especially for parks drawn as areas).
+// Servers are tried in a staggered race: the next one starts if the previous has not answered within 6 s.
+async function fetchLandmarks(p, radius, onWait) {
   const b = blurPos(p), R = Math.round(radius + 100);
   const cached = cacheGet(b, R);
   if (cached) return { list: cached, error: null, cached: true };
-  const a = `(around:${R},${b.lat.toFixed(3)},${b.lon.toFixed(3)})`;
-  // exact tag values (no regular expressions) keep the query light for the public servers
-  const q = `[out:json][timeout:15];
+  const dLat = R / 111320, dLon = R / (111320 * Math.cos(b.lat * rad));
+  const a = `(${(b.lat - dLat).toFixed(5)},${(b.lon - dLon).toFixed(5)},${(b.lat + dLat).toFixed(5)},${(b.lon + dLon).toFixed(5)})`;
+  const q = `[out:json][timeout:25];
   ( nwr["leisure"="park"]${a}; nwr["leisure"="playground"]${a}; nwr["leisure"="garden"]${a};
     node["tourism"="artwork"]${a}; node["tourism"="viewpoint"]${a}; nwr["tourism"="attraction"]${a}; nwr["tourism"="museum"]${a};
     node["historic"]${a}; nwr["amenity"="place_of_worship"]${a}; node["amenity"="fountain"]${a}; nwr["amenity"="library"]${a};
@@ -563,30 +573,45 @@ async function fetchLandmarks(p, radius) {
     nwr["amenity"="community_centre"]["name"]${a}; node["railway"="station"]${a};
   ); out center 200;
   node["highway"="bus_stop"]["name"]${a}; out 150;`;
-  const errors = [];
-  for (const url of OVERPASS) {
-    const host = new URL(url).host;
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 14000);
-    try {
-      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
-      clearTimeout(timer);
-      if (!r.ok) { errors.push(`${host}: HTTP ${r.status}`); continue; }
-      const j = await r.json();
-      // a busy server can answer 200 with an error note and no data — treat that as a failure too
-      if (j.remark && /error|timed out|out of memory|timeout/i.test(j.remark)) { errors.push(`${host}: ${j.remark.slice(0, 60)}`); continue; }
-      const list = toPlaces(j.elements || []);
-      cachePut(b, R, list);
-      return { list, error: null };
-    } catch (e) { clearTimeout(timer); errors.push(`${host}: ${e.name === 'AbortError' ? '応答なし（14秒）' : (e.message || e.name)}`); }
+  const errors = [], ctrls = [], timers = [];
+  let done = false;
+  const t0 = Date.now(), tick = onWait ? setInterval(() => onWait(Math.round((Date.now() - t0) / 1000)), 1000) : null;
+  const tryOne = (url, delay) => new Promise((resolve, reject) => {
+    timers.push(setTimeout(async () => {
+      if (done) return reject('skip');
+      const host = new URL(url).host, ctl = new AbortController(); ctrls.push(ctl);
+      const timer = setTimeout(() => ctl.abort(), 30000);
+      try {
+        const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
+        clearTimeout(timer);
+        if (!r.ok) { errors.push(`${host}: HTTP ${r.status}`); return reject('http'); }
+        const j = await r.json();
+        // a busy server can answer 200 with an error note and no data — treat that as a failure too
+        if (j.remark && /error|timed out|out of memory|timeout/i.test(j.remark)) { errors.push(`${host}: ${j.remark.slice(0, 60)}`); return reject('remark'); }
+        resolve(toPlaces(j.elements || []));
+      } catch (e) {
+        clearTimeout(timer);
+        if (!done) errors.push(`${host}: ${e.name === 'AbortError' ? '応答なし（30秒）' : (e.message || e.name)}`);
+        reject('net');
+      }
+    }, delay));
+  });
+  try {
+    const list = await Promise.any(OVERPASS.map((u, k) => tryOne(u, k * 6000)));
+    cachePut(b, R, list);
+    return { list, error: null };
+  } catch (_) {
+    return { list: null, error: errors.join(' / ') || '通信できませんでした' };
+  } finally {
+    done = true; timers.forEach(clearTimeout); ctrls.forEach(c => c.abort()); if (tick) clearInterval(tick);
   }
-  return { list: null, error: errors.join(' / ') };
 }
 // Pick a random landmark inside the chosen distance band; widen a little if none is found.
-async function pickDestination(p, rg, pre) {
+async function pickDestination(p, rg, pre, onWait) {
   // reuse the search started on the first GPS fix if it was made from (almost) the same spot
   const usePre = pre && pre.center && haversine(pre.center, p) < 150;
-  const res = usePre ? await pre.promise : await fetchLandmarks(p, rg.max * 1.2);
+  const res = usePre ? await pre.promise : await fetchLandmarks(p, rg.max * 1.2, onWait);
   const list = res.list;
   if (list && list.length) {
     let recent = []; try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) {}
@@ -825,8 +850,8 @@ function onGps(p) {
   S.gpsSpeed = p.coords.speed; S.gpsHeading = p.coords.heading;   // course over ground while moving (may be null)
   if (S.phase === 'gps') {
     document.getElementById('gps-status').textContent = `精度 ±${Math.round(S.acc)}m`;
-    if (!S.lmPre && S.acc <= 150) S.lmPre = { center: { ...pos }, promise: fetchLandmarks(pos, currentRange().max * 1.2) };  // start the search early
-    if (S.acc <= CFG.GOOD_ACC) beginRound();
+    if (!S.lmPre && !S.lmTried && S.acc <= 150) { S.lmTried = true; S.lmPre = { center: { ...pos }, promise: fetchLandmarks(pos, currentRange().max * 1.2, sec => S.lmPre && S.lmPre.onWait && S.lmPre.onWait(sec)) }; }  // start the search early
+    if (S.acc <= CFG.GOOD_ACC && document.getElementById('find-fail').hidden) beginRound();
     return debugUpdate();
   }
   if (!S.dest) return;
@@ -856,11 +881,11 @@ function pushRecent(pos, raw) {
   while (S.recent.length && now - S.recent[0].t > 30000) S.recent.shift();
 }
 // Compare now with ~10 s ago. If the player kept walking roughly toward the target over that
-// window, give a faint "pi-pi" — at most once every GOOD_SEC seconds.
+// window, give a faint "pi-pi" — at most once every PIPI_INTERVAL seconds.
 function checkGoodStreak(pos, raw) {
   const now = Date.now();
   if (!S.emphOn || raw <= CFG.ARRIVE_AREA || (S.acc != null && S.acc > 25)) return;
-  if (now - S.lastPipi < CFG.GOOD_SEC * 1000) return;
+  if (now - S.lastPipi < CFG.PIPI_INTERVAL * 1000) return;
   let past = null;
   for (const r of S.recent) { if (now - r.t >= CFG.GOOD_SEC * 1000) past = r; else break; }
   if (!past) return;
@@ -912,6 +937,12 @@ function onGpsErr(e) {
   document.getElementById('gps-status').textContent = m[e.code] || 'GPSでエラーが発生しました。';
   if (e.code === 1) { document.getElementById('gps-help').hidden = false; setPermIntroSeen(false); }
 }
+document.getElementById('btn-find-retry').onclick = () => { if (S.phase === 'gps' && S.pos) beginRound(); };
+document.getElementById('btn-find-random').onclick = () => {
+  if (S.phase !== 'gps' || !S.pendingRandom) return;
+  document.getElementById('find-fail').hidden = true;
+  startRound(S.pendingRandom, currentRange());
+};
 document.getElementById('btn-gps-retry').onclick = () => {
   document.getElementById('gps-help').hidden = true;
   document.getElementById('gps-status').textContent = 'GPSを確認しています…';
@@ -1010,10 +1041,26 @@ function runCalib(recalib) {
 async function beginRound() {
   if (S.phase !== 'gps') return;
   S.phase = 'finding';
-  document.getElementById('gps-status').textContent = '近くの公園や神社などから、目的地を選んでいます…';
-  S.start = { ...S.pos };
+  document.getElementById('find-fail').hidden = true;
+  const st = document.getElementById('gps-status');
+  st.textContent = '近くの公園や神社などから、目的地を選んでいます…';
+  const onWait = sec => { if (S.phase === 'finding') st.textContent = `近くの公園や神社などから、目的地を選んでいます…（${sec}秒）`; };
+  if (S.lmPre && !S.lmPre.ticking) { S.lmPre.ticking = true; S.lmPre.onWait = onWait; }
   const rg = currentRange();
-  const place = await pickDestination(S.pos, rg, S.lmPre);
+  const place = await pickDestination(S.pos, rg, S.lmPre, onWait);
+  S.lmPre = null;   // a retry should search again
+  if (place.source === 'random-offline') {
+    S.phase = 'gps';
+    st.textContent = '目的地の候補を取得できませんでした。';
+    document.getElementById('find-fail-why').textContent = place.err || '';
+    document.getElementById('find-fail').hidden = false;
+    S.pendingRandom = place;
+    return;
+  }
+  startRound(place, rg);
+}
+function startRound(place, rg) {
+  S.start = { ...S.pos };
   S.place = place; S.destSource = place.source; S.destErr = place.err;
   S.dest = { lat: place.lat, lon: place.lon };
   S.arriveR = place.area ? CFG.ARRIVE_AREA : CFG.ARRIVE;
@@ -1206,7 +1253,7 @@ function trendText() {  // used by the radar hint
   return { cls: '', txt: 'ほとんど変わっていません' };
 }
 // Dragon-radar style: you at the center, the destination as a blinking dot.
-// Heading-up while the compass is live (the top of the phone is "ahead"), otherwise north-up.
+// Drawn once when opened: heading-up if the compass is live (top of the phone = ahead), otherwise north-up.
 let radarTimer = null;
 function niceTop(d) { const steps = [100, 200, 300, 500, 800, 1000, 1500, 2000, 3000, 5000]; return steps.find(v => v >= d * 1.15) || Math.ceil(d * 1.15 / 1000) * 1000; }
 function radarDraw(box) {
@@ -1219,7 +1266,7 @@ function radarDraw(box) {
   const nAng = (-rot) * rad, nx = C + (R + 0) * Math.sin(nAng), ny = C - (R + 0) * Math.cos(nAng);
   const rings = [0.25, 0.5, 0.75, 1].map((f, k) =>
     `<circle cx="${C}" cy="${C}" r="${R * f}" fill="none" stroke="var(--border)" stroke-width="${k === 3 ? 2 : 1}"/>`).join('');
-  const labels = [0.5, 1].map(f => `<text x="${C + 4}" y="${C - R * f + 13}">${Math.round(top * f)}m</text>`).join('');
+  const labels = [0.5, 1].map(f => `<text x="${C + R * f - 3}" y="${C - 5}" text-anchor="end">${Math.round(top * f)}m</text>`).join('');
   box.innerHTML = `<svg class="radar2" viewBox="0 0 260 260" role="img" aria-label="レーダー：中心が自分、点が目的地">
     <circle cx="${C}" cy="${C}" r="${R}" fill="var(--surface)"/>
     ${rings}
@@ -1229,7 +1276,7 @@ function radarDraw(box) {
     <path d="M${C} ${C - 11} L${C + 7} ${C + 7} L${C} ${C + 3} L${C - 7} ${C + 7} Z" fill="var(--accent2)"/>
     <circle class="tgt" cx="${tx}" cy="${ty}" r="9" fill="var(--warning)" stroke="#fff" stroke-width="2"/>
   </svg>
-  <p class="credit">${live ? 'スマホの上側が、あなたの前方です' : '上が北です（コンパスが動いていないため）'}</p>`;
+  <p class="credit">${live ? 'レーダーを開いたときの、スマホの上側の方向が前方です' : '上が北です（コンパスが動いていないため）'}</p>`;
 }
 function radarStop() { clearInterval(radarTimer); radarTimer = null; }
 function useHint(n) {
@@ -1250,7 +1297,7 @@ function useHint(n) {
       <div>歩いて約${mins}分</div><div class="${tr.cls}" style="font-size:.85rem">30秒前と比べて：${tr.txt}</div>
       <small style="color:var(--fg-dim)">中心の矢印があなた、点滅している点が目的地です。</small></div>`;
     const box = document.getElementById('radar-box');
-    radarDraw(box); radarStop(); radarTimer = setInterval(() => radarDraw(box), 300);
+    radarDraw(box);   // drawn once, facing the way the phone pointed when the radar was opened
   } else if (n === 3) {
     const dir = DIRS[Math.round(bearing(S.pos, S.dest) / 45) % 8];
     out.innerHTML = `<h2>大まかな方角</h2><div class="hint-result"><div class="big">${dir}</div><div>目的地はおおまかに「${dir}」の方角にあります。</div></div>`;
