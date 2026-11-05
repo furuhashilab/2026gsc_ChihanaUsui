@@ -367,8 +367,7 @@ body.debug-on .screen { padding-bottom:120px; }
     <div id="hint-menu" style="display:flex;flex-direction:column;gap:10px">
       <h2 id="hint-h">ヒント</h2>
       <button class="hint-item" data-hint="1"><span class="n">1</span><span class="t"><span>キャリブレーションのやり直し</span><small>その場でもう一回転して、音で方向を確かめ直す</small></span></button>
-      <button class="hint-item" data-hint="3"><span class="n">2</span><span class="t"><span>大まかな方角</span><small>目的地がどの方角にあるかを8方位で見る</small></span></button>
-      <button class="hint-item" data-hint="2"><span class="n">3</span><span class="t"><span>レーダー</span><small>自分から見た目的地の位置を点で表示し、あと何mかを見る</small></span></button>
+      <button class="hint-item" data-hint="2"><span class="n">2</span><span class="t"><span>レーダー</span><small>自分から見た目的地の位置を点で表示し、あと何mかを見る</small></span></button>
       <button class="hint-item danger" data-hint="4"><span class="n">!</span><span class="t"><span>ギブアップ</span><small>終了して、地図で目的地を確認する</small></span></button>
       <button class="btn btn-ghost btn-sm" id="hint-close" style="align-self:center">閉じる</button>
     </div>
@@ -1357,9 +1356,6 @@ function useHint(n) {
       <small style="color:var(--fg-dim)">中心の矢印があなた、点滅している点が目的地です。</small></div>`;
     const box = document.getElementById('radar-box');
     radarStop(); radarDraw(box);
-  } else if (n === 3) {
-    const dir = DIRS[Math.round(bearing(S.pos, S.dest) / 45) % 8];
-    out.innerHTML = `<h2>大まかな方角</h2><div class="hint-result"><div class="big">${dir}</div><div>目的地はおおまかに「${dir}」の方角にあります。</div></div>`;
   }
   const back = document.createElement('button');
   back.className = 'btn btn-primary'; back.textContent = '探索に戻る'; back.onclick = closeHints;
