@@ -620,26 +620,56 @@ async function fetchLandmarks(p, radius, onWait) {
   }
 }
 // Pick a random landmark inside the chosen distance band; widen a little if none is found.
+/* ---------- bundled landmark data (Kanto, prepared in advance from OpenStreetMap) ---------- */
+// data/lm/meta.json lists the 0.05° tiles that exist; each tile is [[lat, lon, tier, kind, name, arriveRadius, osmId], ...]
+const LOCAL = { meta: null, tiles: {} };
+const localReady = fetch('data/lm/meta.json').then(r => r.ok ? r.json() : null).then(m => { LOCAL.meta = m; }).catch(() => {});
+function inLocalArea(p) {
+  const m = LOCAL.meta; if (!m) return false;
+  return p.lat >= m.bbox[0] && p.lat <= m.bbox[2] && p.lon >= m.bbox[1] && p.lon <= m.bbox[3];
+}
+async function localLandmarks(p, radius) {
+  await localReady;
+  if (!inLocalArea(p)) return null;
+  const m = LOCAL.meta, T = m.tile, have = new Set(m.tiles);
+  const dLat = radius / 111320, dLon = radius / (111320 * Math.cos(p.lat * rad));
+  const keys = [];
+  for (let i = Math.floor((p.lat - dLat) / T); i <= Math.floor((p.lat + dLat) / T); i++)
+    for (let j = Math.floor((p.lon - dLon) / T); j <= Math.floor((p.lon + dLon) / T); j++)
+      if (have.has(`${i}_${j}`)) keys.push(`${i}_${j}`);
+  const parts = await Promise.all(keys.map(k => LOCAL.tiles[k] ||
+    (LOCAL.tiles[k] = fetch(`data/lm/${k}.json`).then(r => r.ok ? r.json() : []).catch(() => { delete LOCAL.tiles[k]; return []; }))));
+  return parts.flat().map(([lat, lon, tier, kind, name, r, osm]) => ({
+    lat, lon, tier, kind, r, area: r > 15, osm, name: name || `名前のない${kind}`, named: !!name }));
+}
+function pickFrom(list, p, rg) {
+  let recent = []; try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) {}
+  const withD = list.map(x => ({ ...x, d: haversine(p, x) }));
+  const pick = (lo, hi, avoid) => {
+    for (const tier of [1, 2, 3]) {                     // prefer real landmarks, then everyday places, then bus stops
+      const pool = withD.filter(x => (x.tier || 1) === tier && x.d >= lo && x.d <= hi && !(avoid && recent.includes(x.osm)));
+      if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
+    }
+    return null;
+  };
+  const got = pick(rg.min, rg.max, true) || pick(rg.min * 0.6, rg.max * 1.2, true) || pick(rg.min, rg.max, false) || pick(rg.min * 0.6, rg.max * 1.2, false);
+  if (got) { try { localStorage.setItem(RECENT_KEY, JSON.stringify([got.osm, ...recent.filter(o => o !== got.osm)].slice(0, 15))); } catch (_) {} }
+  return got;
+}
 async function pickDestination(p, rg, pre, onWait) {
-  // reuse the search started on the first GPS fix if it was made from (almost) the same spot
+  // 1) bundled data: instant and works even when the public servers are down
+  const local = await localLandmarks(p, rg.max * 1.2);
+  if (local && local.length) {
+    const got = pickFrom(local, p, rg);
+    if (got) return { ...got, source: 'local', err: null };
+  }
+  // 2) outside the bundled area (or nothing suitable there): ask the Overpass servers
   const usePre = pre && pre.center && haversine(pre.center, p) < 150;
   const res = usePre ? await pre.promise : await fetchLandmarks(p, rg.max * 1.2, onWait);
   const list = res.list;
   if (list && list.length) {
-    let recent = []; try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) {}
-    const withD = list.map(x => ({ ...x, d: haversine(p, x) }));
-    const pick = (lo, hi, avoid) => {
-      for (const tier of [1, 2, 3]) {                     // prefer real landmarks, then everyday places, then bus stops
-        const pool = withD.filter(x => (x.tier || 1) === tier && x.d >= lo && x.d <= hi && !(avoid && recent.includes(x.osm)));
-        if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
-      }
-      return null;
-    };
-    const got = pick(rg.min, rg.max, true) || pick(rg.min * 0.6, rg.max * 1.2, true) || pick(rg.min, rg.max, false) || pick(rg.min * 0.6, rg.max * 1.2, false);
-    if (got) {
-      try { localStorage.setItem(RECENT_KEY, JSON.stringify([got.osm, ...recent.filter(o => o !== got.osm)].slice(0, 15))); } catch (_) {}
-      return { ...got, source: 'osm', err: null };
-    }
+    const got = pickFrom(list, p, rg);
+    if (got) return { ...got, source: 'osm', err: null };
   }
   const r = randomDest(p, rg);
   return { ...r, area: false, kind: '地点', name: 'ランダムな地点', named: false, osm: null,
@@ -862,7 +892,7 @@ function onGps(p) {
   S.gpsSpeed = p.coords.speed; S.gpsHeading = p.coords.heading;   // course over ground while moving (may be null)
   if (S.phase === 'gps') {
     document.getElementById('gps-status').textContent = `精度 ±${Math.round(S.acc)}m`;
-    if (!S.lmPre && !S.lmTried && S.acc <= 150) { S.lmTried = true; S.lmPre = { center: { ...pos }, promise: fetchLandmarks(pos, currentRange().max * 1.2, sec => S.lmPre && S.lmPre.onWait && S.lmPre.onWait(sec)) }; }  // start the search early
+    if (!S.lmPre && !S.lmTried && S.acc <= 150 && !inLocalArea(pos)) { S.lmTried = true; S.lmPre = { center: { ...pos }, promise: fetchLandmarks(pos, currentRange().max * 1.2, sec => S.lmPre && S.lmPre.onWait && S.lmPre.onWait(sec)) }; }  // start the search early
     if (S.acc <= CFG.GOOD_ACC && document.getElementById('find-fail').hidden) beginRound();
     return debugUpdate();
   }
@@ -1091,7 +1121,7 @@ function startRound(place, rg) {
   S.start = { ...S.pos };
   S.place = place; S.destSource = place.source; S.destErr = place.err;
   S.dest = { lat: place.lat, lon: place.lon };
-  S.arriveR = place.area ? CFG.ARRIVE_AREA : CFG.ARRIVE;
+  S.arriveR = place.r || (place.area ? CFG.ARRIVE_AREA : CFG.ARRIVE);   // big parks get a bigger arrival circle
   S.range = rg;
   S.targetDist = haversine(S.pos, S.dest);
   S.smoothDist = S.targetDist; S.near = false;
@@ -1157,7 +1187,7 @@ function renderRecord(r, el, fresh) {
   const head = fresh
     ? (ok ? '<div class="arrived-title">到着！</div>' : '<div class="gaveup-title">ギブアップ</div>')
     : `<span class="label">${esc(fmtDate(r.date))}</span><div class="${ok ? 'tag-ok' : 'tag-ng'}" style="font-weight:700">${ok ? '到着' : 'ギブアップ'}</div>`;
-  const src = r.place.source === 'osm' ? '' : r.place.source === 'random-offline'
+  const src = (r.place.source === 'osm' || r.place.source === 'local') ? '' : r.place.source === 'random-offline'
     ? `<small>場所のデータを取得できなかったため、ランダムな地点にしました${r.place.err ? `（${esc(r.place.err)}）` : ''}</small>`
     : `<small>この距離に公園などが見つからなかったため、ランダムな地点にしました${r.place.err ? `（${esc(r.place.err)}）` : ''}</small>`;
   el.innerHTML = `${head}
