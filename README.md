@@ -105,14 +105,21 @@ https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 
 ## 生成AIの利用について
 
-本プロトタイプ（`index.html`、`help.html`、`tools/make_tiles_pbf.py`、`data/lm/`）の作成には、全面的にAnthropic社の生成AI「Claude」を使用した。仕様の検討、プログラムの作成、地図データの加工、テキストの作成、GitHubへの反映（commit・push）までをClaudeが行い、筆者は機能や仕様の決定、スマートフォンでの動作確認、データや楽曲の入手と選定、内容の確認を行った。
+古橋研究室の生成AI利用ガイドラインに従い、使用した生成AIを記載する。
 
-- 使用したサービス：Claude デスクトップアプリ（Coworkモード）。筆者のPCのフォルダとGitHubのアクセストークンを、Claudeが作業に使える形で利用した
-- 使用したモデル：
-  - Claude Sonnet 4.6（モデルID：claude-sonnet-4-6）：2026年10月28日の最初のデモの作成
-  - Claude Opus 5.5（モデルID：claude-opus-5-5）：2026年10月28日以降の改良
-- 使用した日：2026年10月28日、11月3日、11月5日、11月6日
+本研究では、プロトタイプ（`index.html`、`help.html`、`tools/make_tiles_pbf.py`、`data/lm/`）の作成に、全面的にAnthropic社の生成AI「Claude」を活用した。仕様の検討、プログラムの作成、地図データの加工、テキストの作成、GitHubへの反映（commit・push）をClaudeが行い、筆者は機能や仕様の決定、スマートフォンでの動作確認、データや楽曲の入手と選定を行った。AIによる出力結果は筆者が確認し、実際に動かして検証したうえで、誤りや不具合は指摘して修正させた。
+
+使用した生成AI（種類・バージョン・使用年月日）：
+
+- Claude デスクトップアプリ（Coworkモード）/ Claude Sonnet 4.6, 2026-10-28, https://claude.ai
+- Claude デスクトップアプリ（Coworkモード）/ Claude Opus 5.5, 2026-10-28, 2026-11-03, 2026-11-05, 2026-11-06, https://claude.ai
+
+補足：
+
+- モデルは、Claude デスクトップアプリで設定したものを記載している（Claude Sonnet 4.6のモデルID：claude-sonnet-4-6、Claude Opus 5.5のモデルID：claude-opus-5-5）
+- Claudeは、筆者のPCの作業フォルダと、GitHubのアクセストークン（公開リポジトリへの書き込み権限のみ）を使って作業した
 - Claudeが作成・変更したコミットには、末尾に「Co-Authored-By: Claude」の記載がある。日時ごとの変更内容は、GitHubのコミット履歴で確認できる
+- 生成AIによる画像生成は使用していない。アプリ内のロゴや図（波の線、レーダーなど）は、Claudeが書いたプログラムで描画している
 
 ## 開発の経緯（中間発表まで）
 
