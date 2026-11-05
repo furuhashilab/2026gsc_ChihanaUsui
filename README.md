@@ -113,6 +113,9 @@ https://furuhashilab.github.io/2026gsc_ChihanaUsui/
 
 - Claude デスクトップアプリ（Coworkモード）/ Claude Sonnet 4.6, 2026-10-28, https://claude.ai
 - Claude デスクトップアプリ（Coworkモード）/ Claude Opus 5.5, 2026-10-28, 2026-11-03, 2026-11-05, 2026-11-06, https://claude.ai
+- ChatGPT / GPT-6 Astra, 2026-11-03, https://openai.com/index/gpt-6-astra/（楽曲素材をリポジトリで公開する方法についての相談に使用）
+
+Claude デスクトップアプリ（Coworkモード）とClaude Opus 5.5は、古橋研究室のAIツール名リスト（v2.4.0、2026-09-04時点）に掲載されていないため、URLを併記した。
 
 補足：
 
