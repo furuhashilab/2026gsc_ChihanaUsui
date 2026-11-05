@@ -84,6 +84,14 @@ details.more summary { cursor:pointer; color:var(--fg-dim); font-size:.85rem; pa
 .stat-box .k { font-size:.75rem; color:var(--fg-dim); display:block; }
 .stat-box .v { font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; }
 .help-link { font-weight:700; }
+.legend .row { font-size:.8rem; align-items:flex-start; }
+.legend .k { flex-shrink:0; }
+.legend .v { font-weight:500; font-size:.8rem; }
+.radar2 { width:100%; max-width:280px; aspect-ratio:1; }
+.radar2 text { font-family:var(--font-ui); font-size:11px; fill:var(--fg-dim); }
+@keyframes blink { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+.radar2 .tgt { animation:blink 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .radar2 .tgt { animation:none; } }
 /* radar rings */
 .radar { position:relative; width:180px; height:180px; flex-shrink:0; }
 .radar .ring { position:absolute; inset:0; border-radius:50%; border:2px solid var(--accent); opacity:0; animation:ring 3s ease-out infinite; }
@@ -273,6 +281,13 @@ body.debug-on .screen { padding-bottom:120px; }
   <span class="label">探索中</span>
   <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <p class="sub">画面は見なくて大丈夫です。<br>音が大きくなる方へ歩いてください。</p>
+  <div class="card legend">
+    <div class="row"><span class="k">音がぐっと大きくなる</span><span class="v">目的地の方へ歩き出した</span></div>
+    <div class="row"><span class="k">音が小さく、こもる</span><span class="v">目的地から離れる方へ歩き出した</span></div>
+    <div class="row"><span class="k">小さく「ピピッ」</span><span class="v">正しい向きに歩き続けている</span></div>
+    <div class="row"><span class="k">上がっていく3つの音</span><span class="v">残り50m。ここから音がはっきりする</span></div>
+    <div class="row"><span class="k">明るい4つの音</span><span class="v">到着</span></div>
+  </div>
   <p class="sub" style="font-size:.82rem">迷ったら<strong>立ち止まってから</strong>ヒントを使いましょう。</p>
   <div class="btn-row" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
     <button class="btn btn-ghost btn-big" id="btn-hint" style="min-width:150px">ヒント</button>
@@ -342,8 +357,8 @@ body.debug-on .screen { padding-bottom:120px; }
     <div id="hint-menu" style="display:flex;flex-direction:column;gap:10px">
       <h2 id="hint-h">ヒント</h2>
       <button class="hint-item" data-hint="1"><span class="n">1</span><span class="t"><span>キャリブレーションのやり直し</span><small>その場でもう一回転して、音で方向を確かめ直す</small></span></button>
-      <button class="hint-item" data-hint="2"><span class="n">2</span><span class="t"><span>レーダー</span><small>今の距離の目安と、近づいているかを画面で見る</small></span></button>
-      <button class="hint-item" data-hint="3"><span class="n">3</span><span class="t"><span>大まかな方角</span><small>目的地がどの方角にあるかを8方位で見る</small></span></button>
+      <button class="hint-item" data-hint="3"><span class="n">2</span><span class="t"><span>大まかな方角</span><small>目的地がどの方角にあるかを8方位で見る</small></span></button>
+      <button class="hint-item" data-hint="2"><span class="n">3</span><span class="t"><span>レーダー</span><small>自分から見た目的地の位置を点で表示し、あと何mかを見る</small></span></button>
       <button class="hint-item danger" data-hint="4"><span class="n">!</span><span class="t"><span>ギブアップ</span><small>終了して、地図で目的地を確認する</small></span></button>
       <button class="btn btn-ghost btn-sm" id="hint-close" style="align-self:center">閉じる</button>
     </div>
@@ -377,7 +392,7 @@ const CFG = {
   STEP_MIN: 5,       // walked-distance accumulation step (m), filters jitter
   PING_FAR: 2.5,     // ping interval far away (s)
   PING_NEAR: 0.8,    // ping interval at destination (s), interval mode only
-  TREND_GOOD: 0.5,   // "pi-pi": approach ratio over 10 s ≥ 0.5 (within ~60° of the target)
+  PIPI_GOOD: 0.7,    // "pi-pi": approach ratio over 10 s ≥ 0.7 (within ~45° of the target)
   GOOD_SEC: 10,      // walking the right way this long → faint "pi-pi"
   GOOD_MIN_MOVE: 8,  // ...and having actually moved at least this far (m) in that time
   USE_PING: false,   // interval ping disabled for now; near-mode cues stay
@@ -393,7 +408,7 @@ const S = {
   heading: null, hx: null, hy: null, calibBearing: null,
   gpsWatch: null, orientPerm: 'unknown', compassSeen: false, lastHeadingAt: 0, orientEvents: 0,
   pauseCount: 0, pausedMs: 0, pauseStart: null, pauseTimer: null,
-  place: null, arriveR: 15, path: [], destSource: 'random',
+  place: null, arriveR: 15, path: [], destSource: 'random', destErr: null, lmPre: null,
   emphOn: true, dirState: 'idle', gpsSpeed: null, gpsHeading: null, lastRatio: null, emphCount: { up: 0, down: 0 },
   recent: [], lastPipi: 0, pipiCount: 0,
   calibTimer: null, debug: false, wakeLock: null,
@@ -471,62 +486,128 @@ document.getElementById('opt-custom').oninput = e => {
 syncRangeUI();
 
 /* ---------- landmark destinations from OpenStreetMap (Overpass API) ---------- */
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const LM_CACHE = 'soundnav.lmcache2';   // v2: tiered categories
+const RECENT_KEY = 'soundnav.recentDest';
 function placeKind(t) {
   if (t.leisure === 'park') return '公園';
   if (t.leisure === 'playground') return '遊び場';
+  if (t.leisure === 'garden') return '庭園';
   if (t.tourism === 'artwork') return t.artwork_type === 'statue' ? '像' : t.artwork_type === 'sculpture' ? '彫刻' : 'アート作品';
   if (t.tourism === 'viewpoint') return '眺めのよい場所';
+  if (t.tourism === 'attraction') return '見どころ';
+  if (t.tourism === 'museum') return '博物館・美術館';
   if (t.historic === 'memorial') return t.memorial === 'statue' ? '像' : '記念碑';
   if (t.historic === 'monument') return 'モニュメント';
   if (t.historic === 'wayside_shrine') return '祠（ほこら）';
+  if (t.historic) return '史跡';
   if (t.amenity === 'fountain') return '噴水';
   if (t.amenity === 'place_of_worship') return t.religion === 'shinto' ? '神社' : t.religion === 'buddhist' ? 'お寺' : t.religion === 'christian' ? '教会' : '礼拝所';
+  if (t.amenity === 'library') return '図書館';
+  if (t.amenity === 'cafe') return 'カフェ';
+  if (t.amenity === 'restaurant') return '飲食店';
+  if (t.amenity === 'post_office') return '郵便局';
+  if (t.amenity === 'community_centre') return '地域の施設';
+  if (t.railway === 'station') return '駅';
+  if (t.highway === 'bus_stop') return 'バス停';
   return 'ランドマーク';
+}
+// 1 = landmarks (parks, shrines, statues ...), 2 = named everyday places (cafes, stations ...), 3 = named bus stops
+function placeTier(t) {
+  if (t.highway === 'bus_stop') return 3;
+  if (['cafe', 'restaurant', 'post_office', 'community_centre'].includes(t.amenity) || t.railway === 'station') return 2;
+  return 1;
 }
 // Privacy: only a blurred position (~100 m grid) leaves the phone. The radius is widened by 100 m to
 // make up for it, and the exact distance band is applied afterwards on the phone with the true position.
+const blurPos = p => ({ lat: Math.round(p.lat * 1000) / 1000, lon: Math.round(p.lon * 1000) / 1000 });
+function toPlaces(elements) {
+  return elements.map(e => {
+    const t = e.tags || {}, c = e.type === 'node' ? { lat: e.lat, lon: e.lon } : e.center;
+    if (!c || t.access === 'private' || t.access === 'no') return null;
+    const kind = placeKind(t), tier = placeTier(t);
+    if (tier > 1 && !(t.name || t['name:ja'])) return null;      // everyday places only when they have a name
+    return { lat: c.lat, lon: c.lon, area: e.type !== 'node', kind, tier,
+             name: t['name:ja'] || t.name || `名前のない${kind}`, named: !!(t['name:ja'] || t.name),
+             osm: `${e.type}/${e.id}` };
+  }).filter(Boolean);
+}
+// Results are cached on the phone per ~100 m area for a day, so replaying nearby needs no new query.
+function cacheGet(b, radius) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LM_CACHE) || '[]');
+    const hit = all.find(c => c.lat === b.lat && c.lon === b.lon && c.radius >= radius && Date.now() - c.t < 86400000);
+    return hit ? hit.list : null;
+  } catch (_) { return null; }
+}
+function cachePut(b, radius, list) {
+  try {
+    const all = JSON.parse(localStorage.getItem(LM_CACHE) || '[]').filter(c => !(c.lat === b.lat && c.lon === b.lon));
+    all.unshift({ lat: b.lat, lon: b.lon, radius, t: Date.now(), list });
+    localStorage.setItem(LM_CACHE, JSON.stringify(all.slice(0, 5)));
+  } catch (_) {}
+}
+// Returns { list, error }. list is null when every server failed.
 async function fetchLandmarks(p, radius) {
-  const blur = { lat: Math.round(p.lat * 1000) / 1000, lon: Math.round(p.lon * 1000) / 1000 };
-  const a = `(around:${Math.round(radius + 100)},${blur.lat.toFixed(3)},${blur.lon.toFixed(3)})`;
-  const q = `[out:json][timeout:25];(
-    nwr${a}[leisure~"^(park|playground)$"];
-    node${a}[tourism~"^(artwork|viewpoint)$"];
-    node${a}[historic~"^(memorial|monument|wayside_shrine)$"];
-    nwr${a}[amenity~"^(fountain|place_of_worship)$"];
-  );out center;`;
+  const b = blurPos(p), R = Math.round(radius + 100);
+  const cached = cacheGet(b, R);
+  if (cached) return { list: cached, error: null, cached: true };
+  const a = `(around:${R},${b.lat.toFixed(3)},${b.lon.toFixed(3)})`;
+  // exact tag values (no regular expressions) keep the query light for the public servers
+  const q = `[out:json][timeout:15];
+  ( nwr["leisure"="park"]${a}; nwr["leisure"="playground"]${a}; nwr["leisure"="garden"]${a};
+    node["tourism"="artwork"]${a}; node["tourism"="viewpoint"]${a}; nwr["tourism"="attraction"]${a}; nwr["tourism"="museum"]${a};
+    node["historic"]${a}; nwr["amenity"="place_of_worship"]${a}; node["amenity"="fountain"]${a}; nwr["amenity"="library"]${a};
+  ); out center 300;
+  ( node["amenity"="cafe"]["name"]${a}; node["amenity"="restaurant"]["name"]${a}; nwr["amenity"="post_office"]${a};
+    nwr["amenity"="community_centre"]["name"]${a}; node["railway"="station"]${a};
+  ); out center 200;
+  node["highway"="bus_stop"]["name"]${a}; out 150;`;
+  const errors = [];
   for (const url of OVERPASS) {
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+    const host = new URL(url).host;
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 14000);
     try {
       const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
       clearTimeout(timer);
-      if (!r.ok) continue;
+      if (!r.ok) { errors.push(`${host}: HTTP ${r.status}`); continue; }
       const j = await r.json();
-      return (j.elements || []).map(e => {
-        const t = e.tags || {}, c = e.type === 'node' ? { lat: e.lat, lon: e.lon } : e.center;
-        if (!c || t.access === 'private' || t.access === 'no') return null;
-        const kind = placeKind(t);
-        return { lat: c.lat, lon: c.lon, area: e.type !== 'node', kind,
-                 name: t['name:ja'] || t.name || `名前のない${kind}`, named: !!(t['name:ja'] || t.name),
-                 osm: `${e.type}/${e.id}` };
-      }).filter(Boolean);
-    } catch (_) { clearTimeout(timer); }
+      // a busy server can answer 200 with an error note and no data — treat that as a failure too
+      if (j.remark && /error|timed out|out of memory|timeout/i.test(j.remark)) { errors.push(`${host}: ${j.remark.slice(0, 60)}`); continue; }
+      const list = toPlaces(j.elements || []);
+      cachePut(b, R, list);
+      return { list, error: null };
+    } catch (e) { clearTimeout(timer); errors.push(`${host}: ${e.name === 'AbortError' ? '応答なし（14秒）' : (e.message || e.name)}`); }
   }
-  return null; // network failure
+  return { list: null, error: errors.join(' / ') };
 }
 // Pick a random landmark inside the chosen distance band; widen a little if none is found.
-async function pickDestination(p, rg) {
-  const list = await fetchLandmarks(p, rg.max * 1.2);
+async function pickDestination(p, rg, pre) {
+  // reuse the search started on the first GPS fix if it was made from (almost) the same spot
+  const usePre = pre && pre.center && haversine(pre.center, p) < 150;
+  const res = usePre ? await pre.promise : await fetchLandmarks(p, rg.max * 1.2);
+  const list = res.list;
   if (list && list.length) {
+    let recent = []; try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (_) {}
     const withD = list.map(x => ({ ...x, d: haversine(p, x) }));
-    let pool = withD.filter(x => x.d >= rg.min && x.d <= rg.max);
-    if (!pool.length) pool = withD.filter(x => x.d >= rg.min * 0.6 && x.d <= rg.max * 1.2);
-    if (pool.length) return { ...pool[Math.floor(Math.random() * pool.length)], source: 'osm' };
+    const pick = (lo, hi, avoid) => {
+      for (const tier of [1, 2, 3]) {                     // prefer real landmarks, then everyday places, then bus stops
+        const pool = withD.filter(x => (x.tier || 1) === tier && x.d >= lo && x.d <= hi && !(avoid && recent.includes(x.osm)));
+        if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
+      }
+      return null;
+    };
+    const got = pick(rg.min, rg.max, true) || pick(rg.min * 0.6, rg.max * 1.2, true) || pick(rg.min, rg.max, false) || pick(rg.min * 0.6, rg.max * 1.2, false);
+    if (got) {
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify([got.osm, ...recent.filter(o => o !== got.osm)].slice(0, 15))); } catch (_) {}
+      return { ...got, source: 'osm', err: null };
+    }
   }
   const r = randomDest(p, rg);
   return { ...r, area: false, kind: '地点', name: 'ランダムな地点', named: false, osm: null,
-           source: list ? 'random-none' : 'random-offline' };
+           source: list ? 'random-none' : 'random-offline',
+           err: list ? `候補${list.length}件、うち${rg.min}〜${rg.max}m付近は0件` : res.error };
 }
 const TRACKS = [
   { id: 'osampo',  title: 'Osampo Biyori（Slow）',  file: 'sound/osampo_biyori_slow.mp3' },
@@ -744,6 +825,7 @@ function onGps(p) {
   S.gpsSpeed = p.coords.speed; S.gpsHeading = p.coords.heading;   // course over ground while moving (may be null)
   if (S.phase === 'gps') {
     document.getElementById('gps-status').textContent = `精度 ±${Math.round(S.acc)}m`;
+    if (!S.lmPre && S.acc <= 150) S.lmPre = { center: { ...pos }, promise: fetchLandmarks(pos, currentRange().max * 1.2) };  // start the search early
     if (S.acc <= CFG.GOOD_ACC) beginRound();
     return debugUpdate();
   }
@@ -784,7 +866,7 @@ function checkGoodStreak(pos, raw) {
   if (!past) return;
   const moved = haversine(past.pos, pos);
   if (moved < CFG.GOOD_MIN_MOVE || moved > 120) return;
-  if ((past.d - raw) / moved >= CFG.TREND_GOOD) { pipi(); S.lastPipi = now; S.pipiCount++; }
+  if ((past.d - raw) / moved >= CFG.PIPI_GOOD) { pipi(); S.lastPipi = now; S.pipiCount++; }
 }
 // Direction of travel: prefer the GPS course (reported once walking, ~1–2 s), otherwise the
 // bearing from the latest point at least 4 m back within the last 8 s.
@@ -931,8 +1013,8 @@ async function beginRound() {
   document.getElementById('gps-status').textContent = '近くの公園や神社などから、目的地を選んでいます…';
   S.start = { ...S.pos };
   const rg = currentRange();
-  const place = await pickDestination(S.pos, rg);
-  S.place = place; S.destSource = place.source;
+  const place = await pickDestination(S.pos, rg, S.lmPre);
+  S.place = place; S.destSource = place.source; S.destErr = place.err;
   S.dest = { lat: place.lat, lon: place.lon };
   S.arriveR = place.area ? CFG.ARRIVE_AREA : CFG.ARRIVE;
   S.range = rg;
@@ -967,7 +1049,7 @@ function finish(gaveUp) {
     result: gaveUp ? 'gaveup' : 'arrived',
     range: S.range ? S.range.label : '', track: currentTrack().title,
     emph: S.emphOn, emphCount: { ...S.emphCount }, pipiCount: S.pipiCount,
-    place: { name: S.place.name, kind: S.place.kind, named: S.place.named, osm: S.place.osm, source: S.destSource },
+    place: { name: S.place.name, kind: S.place.kind, named: S.place.named, osm: S.place.osm, source: S.destSource, err: S.destErr || null },
     targetDist: Math.round(S.targetDist), walked: Math.round(S.walked),
     timeMs: Math.max(0, Date.now() - (S.startTime || Date.now()) - S.pausedMs),
     hints: { ...S.hints }, pauseCount: S.pauseCount, pausedMs: S.pausedMs,
@@ -1001,8 +1083,8 @@ function renderRecord(r, el, fresh) {
     ? (ok ? '<div class="arrived-title">到着！</div>' : '<div class="gaveup-title">ギブアップ</div>')
     : `<span class="label">${esc(fmtDate(r.date))}</span><div class="${ok ? 'tag-ok' : 'tag-ng'}" style="font-weight:700">${ok ? '到着' : 'ギブアップ'}</div>`;
   const src = r.place.source === 'osm' ? '' : r.place.source === 'random-offline'
-    ? '<small>場所のデータを取得できなかったため、ランダムな地点にしました</small>'
-    : '<small>この距離に公園などが見つからなかったため、ランダムな地点にしました</small>';
+    ? `<small>場所のデータを取得できなかったため、ランダムな地点にしました${r.place.err ? `（${esc(r.place.err)}）` : ''}</small>`
+    : `<small>この距離に公園などが見つからなかったため、ランダムな地点にしました${r.place.err ? `（${esc(r.place.err)}）` : ''}</small>`;
   el.innerHTML = `${head}
     <div class="place">目的地：${esc(r.place.name)}${r.place.named ? `<small>${esc(r.place.kind)}</small>` : ''}${src}</div>
     <div class="big-stats">
@@ -1108,13 +1190,13 @@ document.getElementById('btn-resume').onclick = () => {
 /* ---------- hints ---------- */
 const overlay = document.getElementById('hint-overlay'), menu = document.getElementById('hint-menu'), out = document.getElementById('hint-out');
 function openHints() { menu.hidden = false; out.hidden = true; out.innerHTML = ''; overlay.hidden = false; }
-function closeHints() { overlay.hidden = true; }
+function closeHints() { overlay.hidden = true; radarStop(); }
 document.getElementById('btn-hint').onclick = openHints;
 document.getElementById('hint-close').onclick = closeHints;
 overlay.addEventListener('click', e => { if (e.target === overlay) closeHints(); });
 menu.querySelectorAll('.hint-item').forEach(b => b.onclick = () => useHint(+b.dataset.hint));
 
-function trendText() {
+function trendText() {  // used by the radar hint
   const now = Date.now(), d = S.smoothDist;
   const past = S.history.find(h => now - h.t <= 30000) || S.history[0];
   if (!past || now - past.t < 8000) return { cls: '', txt: 'まだ判定できません（少し歩いてから使ってください）' };
@@ -1123,20 +1205,33 @@ function trendText() {
   if (diff > 5) return { cls: 'trend-down', txt: `遠ざかっています（約${Math.round(diff)}m）` };
   return { cls: '', txt: 'ほとんど変わっていません' };
 }
-function radarSVG(d) {
-  // target at center; you are somewhere on the dashed ring (direction is not shown)
-  const top = Math.max(300, Math.ceil(Math.max(S.targetDist * 1.2, d) / 100) * 100);
-  const scale = r => 14 + 96 * Math.min(r, top) / top;
-  const rings = [50, ...[0.25, 0.5, 1].map(f => Math.round(top * f / 50) * 50)].filter((v, i, a) => a.indexOf(v) === i).map(r =>
-    `<circle cx="120" cy="120" r="${scale(r)}" fill="none" stroke="var(--border)" stroke-width="1"/>` +
-    `<text x="120" y="${120 - scale(r) + 11}" text-anchor="middle">${r}m</text>`).join('');
-  const you = scale(d);
-  return `<svg class="radar-svg" width="240" height="240" viewBox="0 0 240 240" aria-label="レーダー">
+// Dragon-radar style: you at the center, the destination as a blinking dot.
+// Heading-up while the compass is live (the top of the phone is "ahead"), otherwise north-up.
+let radarTimer = null;
+function niceTop(d) { const steps = [100, 200, 300, 500, 800, 1000, 1500, 2000, 3000, 5000]; return steps.find(v => v >= d * 1.15) || Math.ceil(d * 1.15 / 1000) * 1000; }
+function radarDraw(box) {
+  const d = S.smoothDist, top = niceTop(d), R = 120, C = 130;
+  const live = S.lastHeadingAt && Date.now() - S.lastHeadingAt < 2000 && S.heading != null;
+  const rot = live ? S.heading : 0;                                  // rotate the world so "ahead" is up
+  const ang = (bearing(S.pos, S.dest) - rot) * rad;
+  const rr = Math.min(1, d / top) * R;
+  const tx = C + rr * Math.sin(ang), ty = C - rr * Math.cos(ang);
+  const nAng = (-rot) * rad, nx = C + (R + 0) * Math.sin(nAng), ny = C - (R + 0) * Math.cos(nAng);
+  const rings = [0.25, 0.5, 0.75, 1].map((f, k) =>
+    `<circle cx="${C}" cy="${C}" r="${R * f}" fill="none" stroke="var(--border)" stroke-width="${k === 3 ? 2 : 1}"/>`).join('');
+  const labels = [0.5, 1].map(f => `<text x="${C + 4}" y="${C - R * f + 13}">${Math.round(top * f)}m</text>`).join('');
+  box.innerHTML = `<svg class="radar2" viewBox="0 0 260 260" role="img" aria-label="レーダー：中心が自分、点が目的地">
+    <circle cx="${C}" cy="${C}" r="${R}" fill="var(--surface)"/>
     ${rings}
-    <circle cx="120" cy="120" r="${you}" fill="none" stroke="var(--warning)" stroke-width="3" stroke-dasharray="6 5"/>
-    <circle cx="120" cy="120" r="6" fill="var(--accent)"/>
-  </svg>`;
+    <line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" stroke="var(--border)"/><line x1="${C}" y1="${C - R}" x2="${C}" y2="${C + R}" stroke="var(--border)"/>
+    ${labels}
+    <circle cx="${nx}" cy="${ny}" r="10" fill="var(--bg)" stroke="var(--border)"/><text x="${nx}" y="${ny + 4}" text-anchor="middle" style="font-weight:700;fill:var(--danger)">N</text>
+    <path d="M${C} ${C - 11} L${C + 7} ${C + 7} L${C} ${C + 3} L${C - 7} ${C + 7} Z" fill="var(--accent2)"/>
+    <circle class="tgt" cx="${tx}" cy="${ty}" r="9" fill="var(--warning)" stroke="#fff" stroke-width="2"/>
+  </svg>
+  <p class="credit">${live ? 'スマホの上側が、あなたの前方です' : '上が北です（コンパスが動いていないため）'}</p>`;
 }
+function radarStop() { clearInterval(radarTimer); radarTimer = null; }
 function useHint(n) {
   if (n === 4) {
     if (confirm('ギブアップしますか？ゲームを終了して、目的地を地図で確認できます。')) { closeHints(); finish(true); }
@@ -1147,11 +1242,15 @@ function useHint(n) {
   const d = S.smoothDist;
   if (n === 1) { closeHints(); runCalib(true); return; }
   if (n === 2) {
-    const band = d < 50 ? '50m以内' : d < 1000 ? `およそ${Math.round(d / 50) * 50}m` : `およそ${(Math.round(d / 100) / 10).toFixed(1)}km`;
+    const dist = d < 1000 ? `約${Math.max(10, Math.round(d / 10) * 10)}m` : `約${(d / 1000).toFixed(1)}km`;
+    const mins = Math.max(1, Math.round(d / 80));
     const tr = trendText();
-    out.innerHTML = `<h2>レーダー</h2>${radarSVG(d)}
-      <div class="hint-result"><div class="big">${band}</div><div class="${tr.cls}">30秒前と比べて：${tr.txt}</div>
-      <small style="color:var(--fg-dim)">中心が目的地です。あなたは点線の輪のどこかにいます。</small></div>`;
+    out.innerHTML = `<h2>レーダー</h2><div id="radar-box" style="width:100%;display:flex;flex-direction:column;align-items:center"></div>
+      <div class="hint-result"><div>目的地まで まっすぐ</div><div class="big" style="color:var(--fg)">${dist}</div>
+      <div>歩いて約${mins}分</div><div class="${tr.cls}" style="font-size:.85rem">30秒前と比べて：${tr.txt}</div>
+      <small style="color:var(--fg-dim)">中心の矢印があなた、点滅している点が目的地です。</small></div>`;
+    const box = document.getElementById('radar-box');
+    radarDraw(box); radarStop(); radarTimer = setInterval(() => radarDraw(box), 300);
   } else if (n === 3) {
     const dir = DIRS[Math.round(bearing(S.pos, S.dest) / 45) % 8];
     out.innerHTML = `<h2>大まかな方角</h2><div class="hint-result"><div class="big">${dir}</div><div>目的地はおおまかに「${dir}」の方角にあります。</div></div>`;
@@ -1250,6 +1349,7 @@ function debugUpdate() {
   if (!S.debug) return;
   document.getElementById('debug').textContent = [
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
+    `dest=${S.destSource}${S.destErr ? ' (' + S.destErr + ')' : ''}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
     `heading=${S.heading != null ? Math.round(S.heading) + '°' : '--'} target=${S.calibBearing != null ? Math.round(S.calibBearing) + '°' : '--'} perm=${S.orientPerm} events=${S.orientEvents}`,
     `hints=${S.hints[1]}/${S.hints[2]}/${S.hints[3]} pause=${S.pauseCount} emph=${S.emphOn ? 'ON' : 'OFF'} dir=${S.dirState} spd=${S.gpsSpeed != null ? (+S.gpsSpeed).toFixed(1) : '--'} cos=${S.lastRatio != null ? S.lastRatio.toFixed(2) : '--'} up/down=${S.emphCount.up}/${S.emphCount.down} pipi=${S.pipiCount}`,
