@@ -719,6 +719,15 @@ function unlockIOSAudio() {
     const pr = unlockEl.play(); if (pr && pr.catch) pr.catch(() => {});
   } catch (_) {}
 }
+// iPhone can "interrupt" the audio (screen recording starting, a call, another app's sound).
+// Try to resume right away and again on the next tap anywhere on the page.
+function wakeAudio() {
+  if (!A.ctx) return;
+  if (A.ctx.state !== 'running') A.ctx.resume().catch(() => {});
+  if (A.streamEl && A.streamEl.paused) { const pr = A.streamEl.play(); if (pr && pr.catch) pr.catch(() => {}); }
+}
+document.addEventListener('touchend', wakeAudio, { passive: true });
+document.addEventListener('click', wakeAudio);
 function audioInit() {
   unlockIOSAudio();
   if (!A.ctx) {
@@ -747,7 +756,8 @@ function audioInit() {
       A.limiter.connect(A.ctx.destination);
     }
   }
-  if (A.ctx.state === 'suspended') A.ctx.resume();
+  if (!A.ctx.onstatechange) A.ctx.onstatechange = () => { if (A.ctx.state !== 'running') setTimeout(wakeAudio, 400); };
+  if (A.ctx.state !== 'running') A.ctx.resume().catch(() => {});
   if (A.streamEl && A.streamEl.paused) { const pr = A.streamEl.play(); if (pr && pr.catch) pr.catch(() => {}); }
 }
 // Load the selected track (cached per track). Returns null if it fails, so the synth pad is used instead.
