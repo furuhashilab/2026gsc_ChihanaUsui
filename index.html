@@ -708,9 +708,10 @@ function silentWavUrl() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 // Test switch for screen-recording issues: add ?audio=plain (neither trick), ?audio=session or ?audio=loop to the URL.
-const AUDIO_MODE = new URLSearchParams(location.search).get('audio') || 'both';
+// default 'stream': play the Web Audio output through an <audio> element (see audioInit)
+const AUDIO_MODE = new URLSearchParams(location.search).get('audio') || 'stream';
 function unlockIOSAudio() {
-  if (AUDIO_MODE === 'plain') return;
+  if (AUDIO_MODE === 'plain' || AUDIO_MODE === 'stream') return;
   if (AUDIO_MODE !== 'loop') { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {} }
   if (AUDIO_MODE === 'session') return;
   try {
@@ -727,9 +728,27 @@ function audioInit() {
     // downmix everything to mono so a single earbud hears the whole song
     A.master.channelCount = 1; A.master.channelCountMode = 'explicit'; A.master.channelInterpretation = 'speakers';
     A.emph = A.ctx.createGain(); A.emph.gain.value = 1;   // temporary boost/cut for walking direction
-    A.master.connect(A.emph); A.emph.connect(A.ctx.destination);
+    // post: everything that reaches the ear (music, cues, pi-pi, preview) → a gentle limiter so peaks never clip
+    A.post = A.ctx.createGain();
+    A.limiter = A.ctx.createDynamicsCompressor();
+    A.limiter.threshold.value = -3; A.limiter.knee.value = 0; A.limiter.ratio.value = 20;
+    A.limiter.attack.value = 0.003; A.limiter.release.value = 0.25;
+    A.master.connect(A.emph); A.emph.connect(A.post); A.post.connect(A.limiter);
+    A.out = A.ctx.destination;
+    if (AUDIO_MODE === 'stream' && A.ctx.createMediaStreamDestination) {
+      // iPhone: sound played by an <audio> element counts as media playback, so it is not muted by the
+      // silent switch and is captured by screen recording (the earlier tricks broke the recording).
+      const dest = A.ctx.createMediaStreamDestination();
+      const el = new Audio(); el.setAttribute('playsinline', ''); el.srcObject = dest.stream;
+      A.limiter.connect(dest); A.streamEl = el;
+      const pr = el.play();
+      if (pr && pr.catch) pr.catch(() => { A.limiter.disconnect(); A.limiter.connect(A.ctx.destination); A.streamFallback = true; });
+    } else {
+      A.limiter.connect(A.ctx.destination);
+    }
   }
   if (A.ctx.state === 'suspended') A.ctx.resume();
+  if (A.streamEl && A.streamEl.paused) { const pr = A.streamEl.play(); if (pr && pr.catch) pr.catch(() => {}); }
 }
 // Load the selected track (cached per track). Returns null if it fails, so the synth pad is used instead.
 async function loadTrack(t) {
@@ -757,7 +776,7 @@ async function padStart() {
     // music loop → low-pass filter (muffled when far, clear when near) → master
     A.useFile = true;
     A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = FILE_FILTER_FAR; A.filter.Q.value = 0.5;
-    A.pad = c.createGain(); A.pad.gain.value = 0.9;
+    A.pad = c.createGain(); A.pad.gain.value = 0.8;
     A.src = c.createBufferSource(); A.src.buffer = buf; A.src.loop = true;
     A.src.connect(A.filter); A.filter.connect(A.pad); A.pad.connect(A.master); A.src.start();
     return;
@@ -809,7 +828,7 @@ function pipi() {
     o.type = 'sine'; o.frequency.value = 1760;
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0008, t + 0.09);
-    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.1);
+    o.connect(g); g.connect(A.post); o.start(t); o.stop(t + 0.1);
   });
 }
 function emphReset() { if (A.emph) { const t = A.ctx.currentTime; A.emph.gain.cancelScheduledValues(t); A.emph.gain.setTargetAtTime(1, t, 0.2); } }
@@ -865,7 +884,7 @@ async function previewStart() {
   if (t.file && !buf) { previewStop(); prevMsg.textContent = '曲を読み込めませんでした。通信状況を確認してください。'; return; }
   P.gain = c.createGain();
   P.gain.channelCount = 1; P.gain.channelCountMode = 'explicit'; P.gain.channelInterpretation = 'speakers';
-  P.gain.connect(c.destination);
+  P.gain.connect(A.post);
   const L = t.file ? Math.min(PREVIEW_SEC, buf.duration) : 8, now = c.currentTime;
   P.gain.gain.setValueAtTime(0, now);
   P.gain.gain.linearRampToValueAtTime(0.8, now + 0.05);
@@ -1408,7 +1427,7 @@ async function keepAwake() {
   try { if ('wakeLock' in navigator) S.wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S.phase !== 'idle' && S.phase !== 'result') { keepAwake(); if (A.ctx) A.ctx.resume(); if (unlockEl) unlockEl.play().catch(() => {}); }
+  if (document.visibilityState === 'visible' && S.phase !== 'idle' && S.phase !== 'result') { keepAwake(); if (A.ctx) A.ctx.resume(); if (unlockEl) unlockEl.play().catch(() => {}); if (A.streamEl) A.streamEl.play().catch(() => {}); }
 });
 
 /* ---------- buttons ---------- */
@@ -1466,7 +1485,7 @@ document.getElementById('btn-debug').onclick = () => { S.debug = !S.debug; docum
 function debugUpdate() {
   if (!S.debug) return;
   document.getElementById('debug').textContent = [
-    `audio=${AUDIO_MODE} ctx=${A.ctx ? A.ctx.state + ' ' + A.ctx.sampleRate + 'Hz' : '--'}`,
+    `audio=${AUDIO_MODE}${A.streamFallback ? '(fallback)' : ''} el=${A.streamEl ? (A.streamEl.paused ? 'paused' : 'playing') : '--'} ctx=${A.ctx ? A.ctx.state + ' ' + A.ctx.sampleRate + 'Hz' : '--'}`,
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dest=${S.destSource}${S.destErr ? ' (' + S.destErr + ')' : ''}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
