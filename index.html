@@ -707,8 +707,12 @@ function silentWavUrl() {
   w(36, 'data'); v.setUint32(40, n * 2, true);
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
+// Test switch for screen-recording issues: add ?audio=plain (neither trick), ?audio=session or ?audio=loop to the URL.
+const AUDIO_MODE = new URLSearchParams(location.search).get('audio') || 'both';
 function unlockIOSAudio() {
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
+  if (AUDIO_MODE === 'plain') return;
+  if (AUDIO_MODE !== 'loop') { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {} }
+  if (AUDIO_MODE === 'session') return;
   try {
     if (!unlockEl) { unlockEl = new Audio(silentWavUrl()); unlockEl.loop = true; unlockEl.setAttribute('playsinline', ''); }
     const pr = unlockEl.play(); if (pr && pr.catch) pr.catch(() => {});
@@ -1462,6 +1466,7 @@ document.getElementById('btn-debug').onclick = () => { S.debug = !S.debug; docum
 function debugUpdate() {
   if (!S.debug) return;
   document.getElementById('debug').textContent = [
+    `audio=${AUDIO_MODE} ctx=${A.ctx ? A.ctx.state + ' ' + A.ctx.sampleRate + 'Hz' : '--'}`,
     `phase=${S.phase} acc=${S.acc != null ? '±' + Math.round(S.acc) + 'm' : '--'} sound=${A.useFile ? 'file' : 'synth'}`,
     `dest=${S.destSource}${S.destErr ? ' (' + S.destErr + ')' : ''}`,
     `dist=${S.smoothDist != null ? Math.round(S.smoothDist) + 'm' : '--'} near=${S.near} walked=${Math.round(S.walked)}m`,
