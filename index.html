@@ -708,8 +708,9 @@ function silentWavUrl() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 // Test switch for screen-recording issues: add ?audio=plain (neither trick), ?audio=session or ?audio=loop to the URL.
-// default 'stream': play the Web Audio output through an <audio> element (see audioInit)
-const AUDIO_MODE = new URLSearchParams(location.search).get('audio') || 'stream';
+// default 'both' (audioSession + silent loop). 'stream' (output through an <audio> element) is kept for testing:
+// it sounded wobbly (speed/pitch drifting) on a PC, so it is not the default.
+const AUDIO_MODE = new URLSearchParams(location.search).get('audio') || 'both';
 function unlockIOSAudio() {
   if (AUDIO_MODE === 'plain' || AUDIO_MODE === 'stream') return;
   if (AUDIO_MODE !== 'loop') { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {} }
@@ -742,18 +743,18 @@ function audioInit() {
     A.limiter = A.ctx.createDynamicsCompressor();
     A.limiter.threshold.value = -3; A.limiter.knee.value = 0; A.limiter.ratio.value = 20;
     A.limiter.attack.value = 0.003; A.limiter.release.value = 0.25;
-    A.master.connect(A.emph); A.emph.connect(A.post); A.post.connect(A.limiter);
+    A.master.connect(A.emph); A.emph.connect(A.post);
     A.out = A.ctx.destination;
     if (AUDIO_MODE === 'stream' && A.ctx.createMediaStreamDestination) {
       // iPhone: sound played by an <audio> element counts as media playback, so it is not muted by the
       // silent switch and is captured by screen recording (the earlier tricks broke the recording).
       const dest = A.ctx.createMediaStreamDestination();
       const el = new Audio(); el.setAttribute('playsinline', ''); el.srcObject = dest.stream;
-      A.limiter.connect(dest); A.streamEl = el;
+      A.post.connect(A.limiter); A.limiter.connect(dest); A.streamEl = el;
       const pr = el.play();
       if (pr && pr.catch) pr.catch(() => { A.limiter.disconnect(); A.limiter.connect(A.ctx.destination); A.streamFallback = true; });
     } else {
-      A.limiter.connect(A.ctx.destination);
+      A.post.connect(A.ctx.destination);     // same output path as before the stream experiment
     }
   }
   if (!A.ctx.onstatechange) A.ctx.onstatechange = () => { if (A.ctx.state !== 'running') setTimeout(wakeAudio, 400); };
@@ -786,7 +787,7 @@ async function padStart() {
     // music loop → low-pass filter (muffled when far, clear when near) → master
     A.useFile = true;
     A.filter = c.createBiquadFilter(); A.filter.type = 'lowpass'; A.filter.frequency.value = FILE_FILTER_FAR; A.filter.Q.value = 0.5;
-    A.pad = c.createGain(); A.pad.gain.value = 0.8;
+    A.pad = c.createGain(); A.pad.gain.value = 0.9;
     A.src = c.createBufferSource(); A.src.buffer = buf; A.src.loop = true;
     A.src.connect(A.filter); A.filter.connect(A.pad); A.pad.connect(A.master); A.src.start();
     return;
