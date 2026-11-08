@@ -699,7 +699,7 @@ const CHORD_NEAR = [261.63, 329.63, 392.00];  // C major: brighter = "you're clo
 // so we loop a short silent clip. Both must start inside a tap.
 let unlockEl = null;
 function silentWavUrl() {
-  const sr = 8000, n = sr / 2, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const sr = 44100, n = sr / 4, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const w = (o, str) => [...str].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
   w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
   v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
@@ -772,10 +772,10 @@ async function padStart() {
 const FILE_FILTER_FAR = 1200, FILE_FILTER_NEAR = 12000;
 function padChord(near) {
   if (!A.pad) return;
-  if (A.useFile) { A.filter.frequency.setTargetAtTime(near ? FILE_FILTER_NEAR : FILE_FILTER_FAR, A.ctx.currentTime, 0.5); return; }
+  if (A.useFile) { glide(A.filter.frequency, near ? FILE_FILTER_NEAR : FILE_FILTER_FAR, 0.5); return; }
   const t = A.ctx.currentTime, ch = near ? CHORD_NEAR : CHORD_FAR;
-  ch.forEach((f, i) => A.oscs[i].frequency.setTargetAtTime(f, t, 0.25));
-  A.filter.frequency.setTargetAtTime(near ? 1600 : 900, t, 0.4);
+  ch.forEach((f, i) => glide(A.oscs[i].frequency, f, 0.25));
+  glide(A.filter.frequency, near ? 1600 : 900, 0.4);
 }
 // Exaggerated feedback on the walking direction: jump up (or down) quickly, then drift back
 // to the normal level slowly enough that the return is hardly noticed (~10 s).
@@ -809,7 +809,15 @@ function pipi() {
   });
 }
 function emphReset() { if (A.emph) { const t = A.ctx.currentTime; A.emph.gain.cancelScheduledValues(t); A.emph.gain.setTargetAtTime(1, t, 0.2); } }
-function setVolume(v, tau = 0.6) { if (A.master) A.master.gain.setTargetAtTime(v, A.ctx.currentTime, tau); }
+// Smoothly glide a parameter to a new value. Earlier pending glides are cleared first, so rapid calls
+// (e.g. dragging the test slider) never pile up hundreds of automation events, which made Safari crackle.
+function glide(param, v, tau) {
+  const t = A.ctx.currentTime;
+  param.cancelScheduledValues(t);
+  param.setValueAtTime(param.value, t);
+  param.setTargetAtTime(v, t, tau);
+}
+function setVolume(v, tau = 0.6) { if (A.master) glide(A.master.gain, v, tau); }
 function bell(freq, gain, when = 0, decay = 0.9) {
   const c = A.ctx, t = c.currentTime + when;
   [[1, 1], [2.01, 0.25]].forEach(([m, g]) => {
@@ -1374,7 +1382,11 @@ function testUpdate() {
   document.getElementById('t-vol').textContent = `${Math.round(v * 100)}%`;
   document.getElementById('t-src').textContent = A.useFile ? currentTrack().title : '合成音';
 }
-document.getElementById('t-range').oninput = testUpdate;
+let testPending = false;   // the slider fires many events per second; update the sound at most once per frame
+document.getElementById('t-range').oninput = () => {
+  if (testPending) return; testPending = true;
+  requestAnimationFrame(() => { testPending = false; testUpdate(); });
+};
 document.getElementById('btn-t-up').onclick = () => emphasize('up');
 document.getElementById('btn-t-down').onclick = () => emphasize('down');
 document.getElementById('btn-t-pipi').onclick = () => pipi();
